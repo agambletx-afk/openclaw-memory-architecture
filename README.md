@@ -234,6 +234,18 @@ When something goes wrong, add a rule to `memory/gating-policies.md`:
 
 **Recommendation:** Start with Ollama for zero cost and full local control. QMD adds reranking quality if you can tolerate the latency.
 
+## Semantic Code Search (Optional)
+
+For codebase-aware agents, add [grepai](https://github.com/yoanbernabeu/grepai) — semantic code search using the same `nomic-embed-text` model. Search your code by meaning ("authentication logic") instead of text patterns.
+
+```bash
+grepai init && grepai watch &
+grepai search "error handling patterns"
+grepai trace callers "getAgents"
+```
+
+See [docs/code-search.md](docs/code-search.md) for full setup.
+
 ## Credits
 
 This architecture was informed by:
