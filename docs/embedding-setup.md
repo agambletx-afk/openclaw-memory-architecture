@@ -2,6 +2,42 @@
 
 ## Option 1: Local with Ollama (Recommended)
 
+### Ollama with AMD GPU (ROCm)
+
+If you have an AMD GPU, use the ROCm variant of Ollama. Here's a working `docker-compose.yml`:
+
+```yaml
+services:
+  ollama:
+    image: ollama/ollama:rocm          # ROCm variant — NOT the default image
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ~/.ollama:/root/.ollama        # model cache & data
+    devices:                            # AMD GPU passthrough (required)
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "993"                           # render group GID — check: getent group render
+      - "44"                            # video group GID — check: getent group video
+    environment:
+      HIP_VISIBLE_DEVICES: "0"          # GPU index (multi-GPU: "0,1")
+      OLLAMA_FLASH_ATTENTION: "1"       # enable flash attention
+      OLLAMA_GPU_MEMORY: "96GB"         # adjust to your GPU VRAM
+      OLLAMA_MAX_LOADED_MODELS: "2"     # max concurrent models in VRAM
+      OLLAMA_NUM_PARALLEL: "2"          # parallel request handling
+      # Uncomment for unsupported cards:
+      # HSA_OVERRIDE_GFX_VERSION: "10.3.0"
+```
+
+**Important:**
+- Must use `ollama/ollama:rocm` — the default image has no AMD GPU support
+- `/dev/kfd` and `/dev/dri` device passthrough is required
+- Group IDs must match your host — verify with `getent group render video`
+- For NVIDIA GPUs, use the default `ollama/ollama` image with `--gpus all` instead
+
 ### Install and pull the model
 
 ```bash
