@@ -80,6 +80,20 @@ Gandalf's memory is a multi-layered system designed to survive session resets, c
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Agent Team
+
+This architecture runs on a production deployment with **14 OpenClaw agents**. Key agents referenced throughout:
+
+| Agent | Role | Memory behavior |
+|-------|------|----------------|
+| **Gandalf** | Main personal assistant (Telegram) | Owns MEMORY.md + USER.md. Only agent that loads personal context. Runs heartbeats. |
+| **Pete** | Project Manager | Maintains `project-{slug}.md` at phase close. Coordinates dev and QA agents. |
+| **Toby** | Lead Developer | Pulls tasks from backlog, writes code, submits to QA. Resets often — relies on project memory. |
+| **Beta-tester** | QA Agent | Tests deliverables against success criteria. Reads project memory + dev standards. |
+| **Ram Dass** | Wisdom / integration coach (Discord) | Separate persona, own SOUL.md with "presence, loving awareness, truth" principles. |
+
+Each agent has its own session, SOUL.md, and principle set. When an agent resets or compacts, it loses session history — but file-based memory (Layers 1–9) and plugin memory (Layers 10–11) persist.
+
 ## Layers
 
 ### Layer 1: Always-Loaded Context

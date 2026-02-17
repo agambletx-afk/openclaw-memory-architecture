@@ -85,6 +85,22 @@ This architecture uses **each tool where it's strongest**.
 └──────────────────────────────────────────────────────┘
 ```
 
+## Agent Team
+
+This architecture runs on a production OpenClaw deployment with **14 agents** working across multiple projects. Understanding the team helps explain why certain layers exist.
+
+| Agent | Role | Why it matters for memory |
+|-------|------|--------------------------|
+| **Gandalf** | Main personal assistant | Owns MEMORY.md, USER.md. Only agent that loads personal context. |
+| **Pete** | Project Manager (PM) | Maintains project memory files at phase close. Coordinates the team. |
+| **Toby** | Lead Developer | Pulls tasks, writes code, runs QA. Resets frequently — needs institutional memory to survive. |
+| **Beta-tester** | QA Agent | Tests against success criteria and scope. Reads project memory for context. |
+| **Ram Dass** | Wisdom / integration coach | Separate persona with its own SOUL.md and principles. |
+
+**The multi-agent problem:** Each agent has its own session. When Toby resets, he loses everything from the previous session. When Pete compacts, architecture decisions vanish. Project memory (Layer 2) exists specifically to solve this — one file per project, maintained centrally, read by all agents at boot.
+
+**The multi-persona problem:** Each agent has its own SOUL.md with distinct personality and principles. The stability plugin tracks principle alignment per agent — Gandalf's "directness" principle is different from Ram Dass's "loving awareness."
+
 ## Layers
 
 ### Layer 1: Always-Loaded Context
@@ -104,7 +120,7 @@ memory/project-clawsmith.md    — architecture decisions, lessons, conventions
 memory/project-my-app.md       — same pattern, different project
 ```
 
-**The problem it solves:** When agents reset or compact, project knowledge vanishes. Toby forgets the pull-based workflow. Pete loses architecture decisions. New agents start from zero.
+**The problem it solves:** When agents reset or compact, project knowledge vanishes. Your dev agent forgets the pull-based workflow. Your PM loses architecture decisions. New agents start from zero.
 
 **The fix:** One file per project, agent-independent, maintained by the PM at phase close:
 
