@@ -58,6 +58,25 @@ Gandalf's memory is a multi-layered system designed to survive session resets, c
 │   │ prevention   │  │ before risky │                    │
 │   │ rules        │  │ operations   │                    │
 │   └──────────────┘  └──────────────┘                    │
+├─────────────────────────────────────────────────────────┤
+│             RUNTIME PLUGIN LAYERS (v3)                   │
+├─────────────────────────────────────────────────────────┤
+│   ┌──────────────────────────────────────────────────┐  │
+│   │ CONTINUITY PLUGIN                                 │  │
+│   │ Cross-session archive (SQLite + SQLite-vec)       │  │
+│   │ 384d embeddings (all-MiniLM-L6-v2)               │  │
+│   │ Topic tracking · Continuity anchors               │  │
+│   │ Context budgeting · Priority-tiered compaction     │  │
+│   │ Injects: [CONTINUITY CONTEXT] per prompt          │  │
+│   └──────────────────────────────────────────────────┘  │
+│   ┌──────────────────────────────────────────────────┐  │
+│   │ STABILITY PLUGIN                                  │  │
+│   │ Entropy monitoring (0.0 stable → 1.0+ drift)     │  │
+│   │ Principle alignment (from SOUL.md Core Principles)│  │
+│   │ Loop detection · Confabulation detection           │  │
+│   │ Heartbeat decision framework                       │  │
+│   │ Injects: [STABILITY CONTEXT] per prompt           │  │
+│   └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -241,6 +260,67 @@ GP-XXX | Trigger | Action | Reason (what went wrong)
 - Contains: what I'm about to do, current state, expected outcome, rollback plan
 - Auto-expire: deleted after 4 hours (or on successful completion)
 - Purpose: survive compaction mid-task
+
+### Layer 9: Continuity Plugin (Runtime)
+
+**`openclaw-plugin-continuity`** — Cross-session conversation memory.
+
+Unlike the file-based layers (loaded at boot), this plugin operates **during** the conversation — tracking, archiving, and recalling in real time.
+
+| Component | Purpose | Storage |
+|-----------|---------|---------|
+| Conversation archive | Stores all exchanges with embeddings | SQLite + SQLite-vec (384d) |
+| Topic tracking | Detects active, fixated, and fading topics | In-memory, injected per prompt |
+| Continuity anchors | Preserves identity moments and contradictions | In-memory, max 15, 2h TTL |
+| Context budgeting | Priority-tiered token allocation for compaction | Configurable pool ratios |
+| Semantic search | "What did we talk about last week?" | SQLite-vec cosine similarity |
+
+**Prompt injection:** Every prompt receives a `[CONTINUITY CONTEXT]` block:
+```
+[CONTINUITY CONTEXT]
+Session: 8 exchanges | Started: 25min ago
+Topics: keystone (active), plugins (fixated — 5 mentions), memory (active)
+```
+
+**Data:** `~/.openclaw/extensions/openclaw-plugin-continuity/data/continuity.db`
+
+**Key config options:**
+- `contextBudget.recentTurnsAlwaysFull: 5` — last 5 turns never truncated
+- `topicTracking.fixationThreshold: 3` — mentions before a topic is flagged as fixated
+- `archive.retentionDays: 90` — how long archived conversations are kept
+- `embedding.model: "Xenova/all-MiniLM-L6-v2"` — local embedding model (384 dimensions)
+
+### Layer 10: Stability Plugin (Runtime)
+
+**`openclaw-plugin-stability`** — Behavioral monitoring and drift prevention.
+
+| Component | Purpose | Storage |
+|-----------|---------|---------|
+| Entropy monitor | Tracks conversation coherence (0.0–1.0+) | JSONL log file |
+| Principle alignment | Matches behavior against SOUL.md principles | Per-prompt evaluation |
+| Loop detection | Catches tool loops and file re-reads | In-memory counters |
+| Heartbeat decisions | Structured decision logging for heartbeats | In-memory + log |
+| Confabulation detection | Flags temporal mismatches and quality decay | Per-prompt evaluation |
+
+**Prompt injection:** Every prompt receives a `[STABILITY CONTEXT]` block:
+```
+[STABILITY CONTEXT]
+Entropy: 0.20 (nominal)
+Principles: integrity, directness, reliability, privacy, curiosity | Alignment: stable
+```
+
+**Per-agent principles:** Each agent's SOUL.md can define a `## Core Principles` section with custom principles. The plugin extracts these at boot and tracks alignment throughout the session. Agents without custom principles get defaults.
+
+**Data:** `~/.openclaw/extensions/openclaw-plugin-stability/data/`
+
+**Key config options:**
+- `entropy.warningThreshold: 0.8` — entropy level that triggers a warning
+- `entropy.criticalThreshold: 1.0` — entropy level that triggers grounding
+- `loopDetection.consecutiveToolThreshold: 5` — consecutive tool calls before warning
+- `loopDetection.fileRereadThreshold: 3` — re-reads of same file before warning
+- `governance.quietHours: { start: "22:00", end: "07:00" }` — reduced activity window
+
+**Source:** Both plugins by [CoderofTheWest](https://github.com/CoderofTheWest)
 
 ---
 

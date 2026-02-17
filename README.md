@@ -47,7 +47,7 @@ This architecture uses **each tool where it's strongest**.
 │  └──────────────┘  └────────────┘  └─────────────┘ │
 │                                                       │
 │  ┌──────────────────────────────────────────────────┐ │
-│  │           PROJECT MEMORY (NEW in v2)              │ │
+│  │           PROJECT MEMORY                          │ │
 │  │  memory/project-{slug}.md per project             │ │
 │  │  Agent-independent institutional knowledge:       │ │
 │  │  decisions, lessons, conventions, risks            │ │
@@ -59,6 +59,29 @@ This architecture uses **each tool where it's strongest**.
 │  │ tools-*.md   │  │ checkpoints/ │                  │
 │  │ (runbooks)   │  │ (pre-flight) │                  │
 │  └──────────────┘  └──────────────┘                  │
+│                                                       │
+├──────────────────────────────────────────────────────┤
+│              PLUGIN LAYERS (NEW in v3)                │
+├──────────────────────────────────────────────────────┤
+│                                                       │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │         CONTINUITY PLUGIN                         │ │
+│  │  Cross-session conversation archive               │ │
+│  │  SQLite-vec semantic search (384d embeddings)     │ │
+│  │  Topic tracking & fixation detection              │ │
+│  │  Continuity anchors (identity, contradiction)     │ │
+│  │  Context budgeting (priority-tiered compaction)   │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │         STABILITY PLUGIN                          │ │
+│  │  Entropy monitoring (drift detection)             │ │
+│  │  Principle alignment (from SOUL.md)               │ │
+│  │  Loop detection (tool + file re-read guards)      │ │
+│  │  Heartbeat decision framework                     │ │
+│  │  Confabulation detection                          │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -73,7 +96,7 @@ Files injected into every session start. Keep them **lean** (total <2K tokens).
 | `MEMORY.md` | Long-term curated wisdom | <8KB |
 | `USER.md` | Who your human is | <3KB |
 
-### Layer 1.5: Project Memory (NEW in v2)
+### Layer 1.5: Project Memory
 Per-project institutional knowledge that survives agent resets and compaction.
 
 ```
@@ -327,6 +350,108 @@ When something goes wrong, add a rule to `memory/gating-policies.md`:
 | GP-XXX | [trigger condition] | [required action] | [what went wrong and when] |
 ```
 
+## Plugin Layers (NEW in v3)
+
+Two OpenClaw plugins add runtime memory capabilities that operate **during** conversations, not just at boot time.
+
+### Continuity Plugin (`openclaw-plugin-continuity`)
+
+Cross-session memory and conversation awareness. Runs as an OpenClaw gateway plugin.
+
+**What it does:**
+- **Conversation archive** — Stores all exchanges in SQLite with SQLite-vec embeddings (384d, `all-MiniLM-L6-v2`). Survives session resets.
+- **Semantic search** — "What were we discussing about infrastructure last week?" searches across archived conversations, not just memory files.
+- **Topic tracking** — Detects what topics are active, fixated (repeated too often), or fading. Injects `[CONTINUITY CONTEXT]` into prompts with session stats and active topics.
+- **Continuity anchors** — Detects identity moments, contradictions, and tensions in conversation. Preserves them through compaction.
+- **Context budgeting** — Priority-tiered token allocation. Recent turns get full text, older turns get compressed. Configurable pool ratios (essential/high/medium/low/minimal).
+
+**Data location:** `~/.openclaw/extensions/openclaw-plugin-continuity/data/`
+- `continuity.db` — SQLite + SQLite-vec archive (conversations + embeddings)
+- `archive/` — JSON conversation archives by date
+
+**Config:** Fully configurable via `openclaw.plugin.json` — token budgets, anchor detection keywords, topic fixation thresholds, compaction triggers, embedding model, archive retention days.
+
+### Stability Plugin (`openclaw-plugin-stability`)
+
+Runtime behavioral monitoring. Keeps agents grounded and self-aware.
+
+**What it does:**
+- **Entropy monitoring** — Tracks conversation entropy (0.0 = stable, 1.0+ = drifting). Injects `[STABILITY CONTEXT]` with current entropy score and principle alignment.
+- **Principle alignment** — Reads `## Core Principles` from each agent's SOUL.md. Tracks positive/negative pattern matches per principle. Reports alignment status (stable/drifting/critical).
+- **Loop detection** — Catches tool loops (5+ consecutive exec calls) and file re-reads (3+ reads of the same file). Injects warnings to break the pattern.
+- **Heartbeat decision framework** — Structured decision logging for heartbeat polls. Tracks what was checked, what was decided, prevents redundant work.
+- **Confabulation detection** — Flags temporal mismatches, quality decay, and recursive meta-reasoning.
+
+**Data location:** `~/.openclaw/extensions/openclaw-plugin-stability/data/`
+- `entropy-monitor.jsonl` — Entropy history log
+- `entropy-history.json` — Aggregated entropy stats
+- `investigation-state.json` — Investigation rate limiting
+
+**Config:** Entropy thresholds, principle sources, loop detection limits, governance rate limits, quiet hours, detector toggles — all in `openclaw.plugin.json`.
+
+### How Plugins Interact with the Memory Stack
+
+```
+                    RUNTIME (during conversation)
+                    ┌─────────────────────────┐
+                    │  Continuity Plugin       │
+                    │  • topic tracking        │──→ [CONTINUITY CONTEXT] injected
+                    │  • conversation archive  │      into every prompt
+                    │  • semantic recall       │
+                    ├─────────────────────────┤
+                    │  Stability Plugin        │
+                    │  • entropy monitoring    │──→ [STABILITY CONTEXT] injected
+                    │  • principle alignment   │      into every prompt
+                    │  • loop guards           │
+                    └─────────────────────────┘
+                              │
+                    BOOT TIME (session start)
+                    ┌─────────────────────────┐
+                    │  File-based layers       │
+                    │  • active-context.md     │
+                    │  • MEMORY.md             │
+                    │  • USER.md / SOUL.md     │
+                    │  • project-{slug}.md     │
+                    │  • facts.db              │
+                    └─────────────────────────┘
+```
+
+The plugins don't replace the file-based layers — they augment them. File layers handle **what you know** (facts, decisions, context). Plugins handle **how you're performing** (drift, repetition, topic awareness, cross-session recall).
+
+### Plugin Installation
+
+Both plugins are installed as OpenClaw gateway extensions:
+
+```bash
+# Clone into extensions directory
+cd ~/.openclaw/extensions
+git clone https://github.com/CoderofTheWest/openclaw-plugin-continuity.git
+git clone https://github.com/CoderofTheWest/openclaw-plugin-stability.git
+
+# Install dependencies
+cd openclaw-plugin-continuity && npm install
+cd ../openclaw-plugin-stability && npm install
+
+# Enable in config (~/.openclaw/openclaw.json)
+# Add to plugins.entries:
+#   "continuity": { "enabled": true }
+#   "stability": { "enabled": true }
+
+# Restart gateway
+openclaw gateway restart
+```
+
+**Per-agent principles:** Add a `## Core Principles` section to each agent's SOUL.md for the stability plugin to track:
+
+```markdown
+## Core Principles
+- **integrity** — investigate before asking, verify before claiming
+- **directness** — no filler, no flattery, say what's true
+- **reliability** — ship, don't talk about shipping
+```
+
+**Source:** [CoderofTheWest](https://github.com/CoderofTheWest) — community-built OpenClaw plugins.
+
 ## Embedding Options
 
 | Provider | Cost | Latency | Quality | Setup |
@@ -381,7 +506,8 @@ This architecture was informed by:
 - **David Badre** — *On Task: How the Brain Gets Things Done* (cognitive gating theory)
 - **Shawn Harris** — [Building a Cognitive Architecture for Your OpenClaw Agent](https://shawnharris.com/building-a-cognitive-architecture-for-your-openclaw-agent/) (active-context.md, gating policies, runbooks)
 - **r/openclaw community** — Hybrid SQLite+FTS5+vector memory approach (structured facts, memory decay, decision extraction)
-- Battle-tested on a production OpenClaw deployment managing 11 agents across multiple projects.
+- **CoderofTheWest** — [openclaw-plugin-continuity](https://github.com/CoderofTheWest/openclaw-plugin-continuity) and [openclaw-plugin-stability](https://github.com/CoderofTheWest/openclaw-plugin-stability) — runtime conversation archive, topic tracking, entropy monitoring, and principle alignment
+- Battle-tested on a production OpenClaw deployment managing 14 agents across multiple projects.
 
 ## Changelog
 

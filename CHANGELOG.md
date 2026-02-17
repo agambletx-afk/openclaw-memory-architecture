@@ -1,5 +1,31 @@
 # Changelog
 
+## v3.0 — 2026-02-17
+
+### Added
+- **Layer 9: Continuity Plugin** — runtime cross-session conversation memory via `openclaw-plugin-continuity`
+  - Conversation archive with SQLite + SQLite-vec embeddings (384d, all-MiniLM-L6-v2)
+  - Topic tracking with fixation detection (configurable thresholds)
+  - Continuity anchors preserving identity moments and contradictions through compaction
+  - Context budgeting with priority-tiered token allocation (essential/high/medium/low/minimal pools)
+  - Cross-session semantic search ("what did we discuss last week?")
+  - `[CONTINUITY CONTEXT]` injected into every prompt with session stats and active topics
+- **Layer 10: Stability Plugin** — runtime behavioral monitoring via `openclaw-plugin-stability`
+  - Entropy monitoring (0.0 stable → 1.0+ drift) with configurable warning/critical thresholds
+  - Principle alignment tracking from each agent's SOUL.md `## Core Principles` section
+  - Loop detection — tool loops (5+ consecutive) and file re-reads (3+ same file)
+  - Heartbeat decision framework with structured logging
+  - Confabulation detection (temporal mismatches, quality decay, recursive meta-reasoning)
+  - `[STABILITY CONTEXT]` injected into every prompt with entropy score and principle alignment
+- **Plugin installation guide** in README
+- **Runtime vs boot-time distinction** — plugins operate during conversations, file layers at boot
+
+### Changed
+- Architecture diagram updated with plugin layers below the file-based stack
+- Agent count updated: 11 → 14 agents in production
+- Credits updated with CoderofTheWest plugin attributions
+- ARCHITECTURE.md expanded with Layer 9 and Layer 10 documentation
+
 ## v2.1 — 2026-02-16
 
 ### Added
