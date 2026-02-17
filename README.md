@@ -124,8 +124,8 @@ Long-term curated wisdom. **Main session only** — never loaded in shared conte
 Per-project institutional knowledge that survives agent resets and compaction.
 
 ```
-memory/project-clawsmith.md    — architecture decisions, lessons, conventions
-memory/project-my-app.md       — same pattern, different project
+memory/project-my-saas.md      — architecture decisions, lessons, conventions
+memory/project-marketing-site.md — brand voice, content pipeline, legal rails
 ```
 
 **The problem it solves:** When agents reset or compact, project knowledge vanishes. Your dev agent forgets the pull-based workflow. Your PM loses architecture decisions. New agents start from zero.

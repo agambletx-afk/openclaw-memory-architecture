@@ -17,7 +17,7 @@ Gandalf's memory is a multi-layered system designed to survive session resets, c
 │   │ active-      │  │  MEMORY.md   │  │  USER.md     │ │
 │   │ context.md   │  │  (strategic) │  │  (identity)  │ │
 │   │ (working     │  │              │  │              │ │
-│   │  memory)     │  │  Long-term   │  │  Who Sascha  │ │
+│   │  memory)     │  │  Long-term   │  │  Who your    │ │
 │   │              │  │  curated     │  │  is, family, │ │
 │   │  What's hot  │  │  wisdom      │  │  projects    │ │
 │   │  RIGHT NOW   │  │              │  │              │ │
@@ -102,8 +102,8 @@ Each agent has its own session, SOUL.md, and principle set. When an agent resets
 
 | File | Purpose | Size Target | Update Frequency |
 |------|---------|-------------|-----------------|
-| `SOUL.md` | Who I am — identity, voice, values | <2KB | Rarely (with Sascha's knowledge) |
-| `USER.md` | Who Sascha is — family, projects, preferences | <3KB | When new info learned |
+| `SOUL.md` | Agent identity — personality, voice, values, principles | <2KB | Rarely (with human's knowledge) |
+| `USER.md` | Who the human is — family, projects, preferences | <3KB | When new info learned |
 | `IDENTITY.md` | Quick identity card (name, emoji, vibe) | <0.5KB | Rarely |
 | `memory/active-context.md` | Working memory — what's hot right now | <2KB | End of every significant session |
 | `HEARTBEAT.md` | Periodic check instructions | <1KB | As needed |
@@ -117,7 +117,7 @@ Each agent has its own session, SOUL.md, and principle set. When an agent resets
 | `MEMORY.md` | Long-term curated wisdom — lessons, insights, key events | <8KB | During heartbeat memory maintenance |
 
 **Rules:**
-- Only loaded in main session (direct chat with Sascha)
+- Only loaded in main session (direct chat with your human)
 - Never loaded in shared contexts (Discord, group chats) — security
 - Reviewed and pruned every few days during heartbeat maintenance
 - Daily files get distilled into MEMORY.md, not dumped wholesale
@@ -126,36 +126,33 @@ Each agent has its own session, SOUL.md, and principle set. When an agent resets
 
 **`memory/project-{slug}.md`** — Institutional knowledge per project.
 
-| File | Purpose | Size Target | Update Frequency |
-|------|---------|-------------|-----------------|
-| `memory/project-clawsmith.md` | ClawSmith decisions, lessons, conventions, risks | <6KB | At every phase close |
-| `memory/project-adult-in-training.md` | AIT legal rails, content pipeline, brand voice | <3KB | When workflow changes |
+One file per project, one pattern: `memory/project-{slug}.md`
 
 **What goes here:**
 - Architecture decisions (distilled, not raw DB dumps)
-- Lessons learned the hard way — agent management, infrastructure, process
+- Lessons learned the hard way
 - Conventions that emerged during development
 - Known risks and active concerns
 - Workflow patterns (status flow, QA process, design-first rules)
 
 **What does NOT go here:**
-- Backlog items, current status, sprint state → that's the DB
+- Backlog items, current status, sprint state → that's the DB or task tracker
 - Raw daily logs → that's `YYYY-MM-DD.md`
 - Personal context → that's `MEMORY.md` or `USER.md`
 
 **Lifecycle:**
-1. **Created** by Project Setup Wizard (`/api/projects/create` auto-scaffolds the template)
-2. **Seeded** by the wizard agent with initial context from the setup conversation
-3. **Read** by all project agents at boot (step 1 in every agent's boot sequence)
-4. **Updated** by PM at phase close gate (D-012) — retrospective findings, new lessons, convention changes
+1. **Created** when a new project starts (manually or via scaffolding)
+2. **Seeded** with initial context from the project setup conversation
+3. **Read** by all project agents at boot — it's step 1 in their boot sequence
+4. **Updated** by the PM agent at phase transitions — retrospective findings, new lessons, convention changes
 5. **Survives** every agent reset, compaction, and session purge
 
-**Key property:** Agent-independent. When Toby resets, the knowledge persists. When Pete compacts, decisions don't vanish. One file per project, maintained centrally, read by everyone.
+**Key property:** Agent-independent. When your dev agent resets, the knowledge persists. When your PM compacts, decisions don't vanish. One file per project, maintained centrally, read by everyone.
 
 **Rules:**
-- All project agents read this at session start — it's step 1 in boot sequence
-- PM is responsible for keeping it current (phase close gate enforces this)
-- Main agent (Gandalf) can also update it when significant cross-cutting decisions happen
+- All project agents read this at session start
+- PM agent is responsible for keeping it current (enforce via phase-close gates or checklists)
+- Main agent can also update it when significant cross-cutting decisions happen
 - Keep it under 6KB — distilled wisdom, not a dump of everything
 
 ### Layer 4: Structured Facts (SQLite)
@@ -394,7 +391,7 @@ Toby resets? Knowledge persists. Pete compacts? Decisions survive. New agent joi
 ```
 1. Read memory/project-{slug}.md (institutional knowledge — FIRST)
 2. Read SOUL.md / IDENTITY.md (who am I)
-3. Read agent-specific boot steps (clawsmith-cli state, work queue, etc.)
+3. Read agent-specific boot steps (task queue, project state, etc.)
 4. Read memory/YYYY-MM-DD.md (today) for recent context
 ```
 
@@ -573,11 +570,10 @@ You wake up fresh each session. These are your memory systems:
 
 ### 2026-02-15b — Project Memory Layer (Cross-Agent Knowledge)
 - **Added** `memory/project-{slug}.md` — per-project institutional knowledge files
-- **Created** `memory/project-clawsmith.md` (~6KB) — 16 architecture decisions, 15 lessons, conventions, risks
-- **Created** `memory/project-adult-in-training.md` (~2.5KB) — legal rails, content pipeline, brand voice
-- **Changed** `/api/projects/create` scaffold — now auto-creates `memory/project-{slug}.md` template
-- **Changed** Project Setup Wizard boot sequence — steps 6-7: populate project memory, wire agent boot sequences
-- **Changed** Pete PM phase close gate (D-012) — must update project memory before closing phase
+- **Created** per-project memory files using `memory/project-{slug}.md` pattern
+- **Added** project memory template at `templates/project-memory.md`
+- **Changed** project setup workflow to auto-scaffold project memory files
+- **Changed** PM agent phase-close gate to require updating project memory before closing a phase
 - **Changed** Agent boot sequences (Toby, Pete, Beta-tester) — step 1 is now reading project memory
 - **Rationale:** Agent resets and compaction destroyed project knowledge. Decisions vanished, lessons had to be relearned. Project memory is agent-independent — one file per project, maintained by PM at phase close, read by all agents at boot. Solves the "Toby resets and starts from zero" problem.
 
