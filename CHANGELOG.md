@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.1 — 2026-02-17
+
+### Added
+- **Implementation Patterns** section in ARCHITECTURE.md — documented patterns for memory architecture
+- **Proprioceptive Framing** pattern — when identity docs define memory as "only files," agents ignore databases and plugin-injected context even when they have access. Fix: explicitly list every memory system as belonging to the agent.
+- Credit to CoderofTheWest for discovering the framing-as-bottleneck pattern ([r/openclaw post](https://www.reddit.com/r/openclaw/comments/1r6rnq2/memory_fix_you_all_want/))
+
+### Changed
+- AGENTS.md memory section now explicitly claims four memory systems (files, facts.db, continuity.db, plugin injection)
+- Framing changed from "These files are your continuity" → "These are your memory systems"
+- Added guardrail: "Don't claim 'I don't have access to X' until you've checked all four"
+
 ## v3.0 — 2026-02-17
 
 ### Added

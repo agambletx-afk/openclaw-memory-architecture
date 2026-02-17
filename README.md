@@ -506,7 +506,7 @@ This architecture was informed by:
 - **David Badre** — *On Task: How the Brain Gets Things Done* (cognitive gating theory)
 - **Shawn Harris** — [Building a Cognitive Architecture for Your OpenClaw Agent](https://shawnharris.com/building-a-cognitive-architecture-for-your-openclaw-agent/) (active-context.md, gating policies, runbooks)
 - **r/openclaw community** — Hybrid SQLite+FTS5+vector memory approach (structured facts, memory decay, decision extraction)
-- **CoderofTheWest** — [openclaw-plugin-continuity](https://github.com/CoderofTheWest/openclaw-plugin-continuity) and [openclaw-plugin-stability](https://github.com/CoderofTheWest/openclaw-plugin-stability) — runtime conversation archive, topic tracking, entropy monitoring, and principle alignment
+- **CoderofTheWest** — [openclaw-plugin-continuity](https://github.com/CoderofTheWest/openclaw-plugin-continuity) and [openclaw-plugin-stability](https://github.com/CoderofTheWest/openclaw-plugin-stability) — runtime conversation archive, topic tracking, entropy monitoring, and principle alignment. Also discovered the [proprioceptive framing pattern](https://www.reddit.com/r/openclaw/comments/1r6rnq2/memory_fix_you_all_want/): identity docs must explicitly claim ownership of every memory system, or the agent won't use them
 - Battle-tested on a production OpenClaw deployment managing 14 agents across multiple projects.
 
 ## Changelog

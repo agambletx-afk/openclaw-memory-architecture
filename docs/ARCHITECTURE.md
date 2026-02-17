@@ -513,7 +513,49 @@ In `~/.openclaw/openclaw.json`:
 
 ---
 
+## Implementation Patterns
+
+### Pattern: Proprioceptive Framing
+
+**Problem:** An agent has access to a database, can query it with tools, and receives injected context from a plugin — but when asked about past conversations, denies having access.
+
+**Root cause:** Identity documents (AGENTS.md, SOUL.md) define memory as *only files*:
+- "You wake up fresh each session. **These files** are your continuity."
+- "Memory is limited — if you want to remember something, **WRITE IT TO A FILE.**"
+
+This creates a semantic frame where databases exist as "external infrastructure" rather than "my memory." The agent has the capability but not the proprioceptive ownership.
+
+**Fix:** Explicitly list every memory system in the identity documents as belonging to the agent:
+
+```markdown
+## Memory
+You wake up fresh each session. These are your memory systems:
+- **Daily notes:** `memory/YYYY-MM-DD.md` — raw logs
+- **Long-term:** `MEMORY.md` — curated memories
+- **Structured facts:** `memory/facts.db` — entity/key/value SQLite store
+- **Conversation archive:** continuity.db — past exchanges, queryable via sqlite3
+- **Continuity plugin:** Actively injecting relevant past exchanges into your context
+
+**Don't claim "I don't have access to X" until you've checked all systems.**
+```
+
+**Key insight:** The bottleneck isn't technical — it's the frame. Same binary, same data, different proprioceptive ownership. Two paragraphs in AGENTS.md shift a database from "external system" to "my memory system."
+
+**Credit:** Discovered by [CoderofTheWest](https://github.com/CoderofTheWest) while building the CLINT agent wrapper. Documented in [r/openclaw](https://www.reddit.com/r/openclaw/comments/1r6rnq2/memory_fix_you_all_want/).
+
+**Rule of thumb:** When adding a new memory layer (plugin, database, API), always update the agent's identity documents to claim ownership of it. If the identity docs don't say "this is mine," the agent won't use it consistently.
+
+---
+
 ## Changelog
+
+### 2026-02-17 — Proprioceptive Framing Fix + Four Memory Systems
+- **Added** "Implementation Patterns" section with Proprioceptive Framing pattern
+- **Changed** AGENTS.md memory section — explicitly lists all four memory systems (files, facts.db, continuity.db, plugin injection)
+- **Changed** framing from "These files are your continuity" to "These are your memory systems"
+- **Added** rule: "Don't claim 'I don't have access to X' until you've checked all four"
+- **Credit** CoderofTheWest (r/openclaw) for discovering the framing-as-bottleneck pattern
+- **Rationale:** Identity documents defining memory as "only files" caused the agent to ignore SQLite databases and plugin-injected context, even when the tools existed and data was present. The fix is proprioceptive: claim ownership in the identity docs.
 
 ### 2026-02-15b — Project Memory Layer (Cross-Agent Knowledge)
 - **Added** `memory/project-{slug}.md` — per-project institutional knowledge files
