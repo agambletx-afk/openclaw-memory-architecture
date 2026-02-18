@@ -395,6 +395,8 @@ Cross-session memory and conversation awareness. Runs as an OpenClaw gateway plu
 
 **Config:** Fully configurable via `openclaw.plugin.json` — token budgets, anchor detection keywords, topic fixation thresholds, compaction triggers, embedding model, archive retention days.
 
+**⚠️ Known limitation — Recall truncation (v0.1.0):** When past exchanges are injected into a session via `prependContext`, the plugin truncates recalled text aggressively (150–300 chars by default). A 2,000-char agent response becomes a mangled 150-char snippet. Storage is intact — full text lives in SQLite — but the *recalled context* is too lossy for the agent to meaningfully use. We recommend patching `_truncate()` limits to 600–1000 chars and adding sentence-boundary-aware truncation. See [issue #2](https://github.com/CoderofTheWest/openclaw-plugin-continuity/issues/2).
+
 ### Layer 11: Stability Plugin (`openclaw-plugin-stability`)
 
 Runtime behavioral monitoring. Keeps agents grounded and self-aware.
