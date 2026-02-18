@@ -162,7 +162,7 @@ One file per project, one pattern: `memory/project-{slug}.md`
 ```sql
 CREATE TABLE facts (
     id INTEGER PRIMARY KEY,
-    entity TEXT NOT NULL,      -- "Janna", "ClawSmith", "convention"
+    entity TEXT NOT NULL,      -- "Partner", "ClawSmith", "convention"
     key TEXT NOT NULL,         -- "birthday", "stack", "always"
     value TEXT NOT NULL,       -- "July 7", "Next.js 15 + SQLite", "use trash not rm"
     category TEXT NOT NULL,    -- person, project, decision, convention, credential, preference
@@ -178,7 +178,7 @@ CREATE VIRTUAL TABLE facts_fts USING fts5(entity, key, value, content=facts, con
 ```
 
 **Query patterns:**
-- `SELECT * FROM facts WHERE entity='Janna' AND key='birthday'` → instant, exact
+- `SELECT * FROM facts WHERE entity='Partner' AND key='birthday'` → instant, exact
 - `SELECT * FROM facts_fts WHERE facts_fts MATCH 'birthday'` → full-text search
 - Semantic search (QMD/Ollama) for fuzzy "what was that thing about..." queries
 
@@ -420,7 +420,7 @@ Toby resets? Knowledge persists. Pete compacts? Decisions survive. New agent joi
 | **NPU** | RyzenAI NPU5 (not currently used) |
 | **Storage** | 1.9TB NVMe (Phison ESR02T) — 12% used |
 | **OS** | Ubuntu 25.10 |
-| **Hostname** | aiserver.home.mykuhlmann.com |
+| **Hostname** | aiserver.home.example.com |
 
 **Key advantage:** 96GB unified VRAM means we can run large models (70B+) that would require multi-GPU setups on discrete cards. The tradeoff is shared memory bandwidth with system RAM.
 
@@ -443,7 +443,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - /home/coolmann/.ollama:/root/.ollama
+      - /home/user/.ollama:/root/.ollama
     devices:                            # AMD GPU passthrough
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
@@ -584,7 +584,7 @@ You wake up fresh each session. These are your memory systems:
 - **Added** `memory/checkpoints/` — pre-flight state saves
 - **Added** `memory/ARCHITECTURE.md` — this document
 - **Changed** QMD timeout from 4000ms to 5000ms
-- **Rationale:** Inspired by Shawn Harris (cognitive architecture article) and Reddit hybrid memory post. 80% of memory queries are structured lookups — embedding search is overkill for "what's Janna's birthday?"
+- **Rationale:** Inspired by Shawn Harris (cognitive architecture article) and Reddit hybrid memory post. 80% of memory queries are structured lookups — embedding search is overkill for "what's Partner's birthday?"
 
 ### 2026-02-14 — Local Embeddings Migration
 - **Changed** memory search from OpenAI text-embedding-3-small to local Ollama nomic-embed-text

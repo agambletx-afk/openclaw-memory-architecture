@@ -28,7 +28,7 @@ Write 40-60 natural language queries that your human would actually ask. Cover e
 
 **Rules for good queries:**
 - Use the words your human actually says, not how the data is stored
-- Mix formal and informal phrasing ("Mama" vs "Heidi Kuhlmann-Becker")
+- Mix formal and informal phrasing ("Mom" vs "Mom FullName")
 - Include lookups that require indirect resolution (nicknames, abbreviations)
 - Don't make them too easy — if grep would find it, it's not testing search quality
 

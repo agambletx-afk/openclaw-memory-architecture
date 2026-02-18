@@ -4,7 +4,7 @@ Graph-augmented memory search.
 Combines: alias resolution → facts.db → relations → FTS → source file mapping
 
 Usage:
-  python3 scripts/graph-search.py "When is Janna's birthday?"
+  python3 scripts/graph-search.py "When is someone's birthday?"
   python3 scripts/graph-search.py "What runs on aiserver?" --json
   python3 scripts/graph-search.py "Mama's phone number"
 """
@@ -16,7 +16,7 @@ import sys
 import argparse
 from pathlib import Path
 
-DB_PATH = Path("/home/coolmann/clawd/memory/facts.db")
+DB_PATH = Path("/path/to/workspace/memory/facts.db")
 
 
 def resolve_entity(db: sqlite3.Connection, name: str) -> str | None:
@@ -57,16 +57,21 @@ def extract_entity_candidates(query: str) -> list[str]:
         if w1 and w2 and w3:
             candidates.append(f"{w1} {w2} {w3}")
     
-    # Also try common lowercase aliases
+    # Also try common lowercase aliases (word-boundary matching to avoid "flo" in "overflow")
     lower_aliases = ["mama", "jojo", "flo", "aiserver", "homelab", "n8n", "keystone",
                      "clawsmith", "postiz", "komodo", "ghost", "ollama", "mdt", "ait",
                      "the server", "ha"]
     query_lower = query.lower()
     for alias in lower_aliases:
-        if alias in query_lower:
-            candidates.append(alias)
+        if " " in alias:
+            if alias in query_lower:
+                candidates.append(alias)
+        else:
+            pattern = r'\b' + re.escape(alias) + r'\b'
+            if re.search(pattern, query_lower):
+                candidates.append(alias)
     
-    # Possessive patterns: "Janna's" → "Janna"
+    # Possessive patterns: "someone's" → "Partner"
     for match in re.finditer(r"(\w+)'s", query):
         candidates.append(match.group(1))
     
@@ -81,7 +86,7 @@ def extract_entity_candidates(query: str) -> list[str]:
     # Skip very short/generic aliases to avoid false matches
     SKIP_ALIASES = {"i", "me", "my name", "who am i", "ha", "the server"}
     try:
-        db_path = Path("/home/coolmann/clawd/memory/facts.db")
+        db_path = Path("/path/to/workspace/memory/facts.db")
         if db_path.exists():
             _db = sqlite3.connect(str(db_path))
             all_aliases = [r[0] for r in _db.execute("SELECT DISTINCT alias FROM aliases").fetchall()]

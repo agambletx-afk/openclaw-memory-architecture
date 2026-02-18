@@ -155,8 +155,8 @@ Template: [`templates/project-memory.md`](templates/project-memory.md)
 For precise lookups that don't need embeddings.
 
 ```sql
--- "What's Janna's birthday?"
-SELECT value FROM facts WHERE entity='Janna' AND key='birthday';
+-- "What's Partner's birthday?"
+SELECT value FROM facts WHERE entity='Partner' AND key='birthday';
 -- → "July 7, 1976" (instant, zero API calls)
 
 -- Full-text search
@@ -180,7 +180,11 @@ SELECT object FROM relations WHERE subject='Project Keystone' AND predicate='run
 
 Three tables extend `facts.db`: **relations** (subject-predicate-object triples), **aliases** (fuzzy entity names), and **relations_fts** (full-text search on triples).
 
-**Benchmark results:** Hybrid search (graph + BM25) achieved **60/60 (100%)** recall on a 60-query benchmark, up from **28/60 (46.7%)** with BM25 alone. The PROJECTS category went from 10% → 100%.
+**Benchmark results:** Hybrid search (graph + BM25) achieves **60/60 (100%)** recall on a 60-query benchmark, up from **28/60 (46.7%)** with BM25 alone. Graph-only achieves 96.7%. The knowledge graph now contains 1,265 facts, 488 relations, and 125 aliases across 361 entities — auto-ingested from 74 source files via `scripts/graph-ingest-daily.py`.
+
+**Pipeline integration:** The `openclaw-plugin-graph-memory` hooks into OpenClaw's `before_agent_start` event, automatically injecting relevant entity matches as `[GRAPH MEMORY]` context before the LLM processes each message. Zero API cost, sub-2-second latency. See `plugin/` and `docs/knowledge-graph.md`.
+
+**Context optimization:** Moving structured facts to the graph enabled aggressive trimming of workspace files — MEMORY.md (12.4KB → 3.5KB) and AGENTS.md (14.7KB → 4.3KB), saving ~6,500 tokens per session. See `docs/context-optimization.md`.
 
 See [`docs/knowledge-graph.md`](docs/knowledge-graph.md) for full documentation, schema, search pipeline, and benchmark methodology.
 

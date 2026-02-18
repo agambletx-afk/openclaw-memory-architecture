@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-WORKSPACE = os.environ.get("WORKSPACE", "/home/coolmann/clawd")
+WORKSPACE = os.environ.get("WORKSPACE", "/path/to/workspace")
 MEMORY_DIR = os.path.join(WORKSPACE, "memory")
 MEMORY_MD = os.path.join(WORKSPACE, "MEMORY.md")
 

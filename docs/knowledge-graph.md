@@ -8,252 +8,162 @@ BM25 and vector search work for fuzzy recall — *"what were we discussing about
 
 - "What port does Keystone run on?" → BM25 can't match "port" to the right file
 - "Mama's phone number" → Vector search returns USER.md (wrong), not family-contacts.md (right)
-- "What does Sascha own?" → No single file answers this; it's scattered across 5 project files
+- "What does User own?" → No single file answers this; it's scattered across 5 project files
 
 These are **graph queries**, not search queries. The answer lives in relationships between entities, not keywords in documents.
 
-## The Evidence: Benchmark Results
+## Benchmark Results
 
-We built a 60-query benchmark across 7 categories and measured recall (correct file in top-6 results):
+60-query benchmark across 7 categories (PEOPLE, TOOLS, PROJECTS, FACTS, OPERATIONAL, IDENTITY, DAILY):
 
 | Method | Score | Notes |
 |--------|-------|-------|
-| QMD BM25 only | 28/60 (46.7%) | Baseline — keyword search |
-| Graph only | 33/60 (55.0%) | Entity resolution + facts |
-| Hybrid v1 (graph + BM25) | 40/60 (66.7%) | Combined search |
-| + entity fixes | 43/60 (71.7%) | More entities seeded |
-| + doc entities + alias tuning | 54/60 (90.0%) | Documents modeled as entities |
-| + event entities + edge cases | **60/60 (100%)** | Temporal events as entities |
+| BM25 only (QMD) | 46.7% | Baseline — good for keyword matches, poor for entity lookups |
+| Graph only | 96.7% | Entity matching + FTS fallback |
+| **Hybrid (Graph + BM25)** | **100%** | Graph handles entities, BM25 handles everything else |
 
-**Key finding:** PROJECTS category went from **10% → 100%** with the graph layer. PEOPLE went from **60% → 100%**. These are the categories where real data lives.
-
-**Key insight from a parallel community effort** ([r/openclaw post](https://old.reddit.com/r/openclaw/comments/1r7nd4y/)): *"Memory is a content problem, not a technology problem."* Better embeddings didn't help. Better content structure did. Our graph layer proves this at a deeper level — structure your data as entities and relationships, not just better-organized files.
+The graph doesn't replace vector/keyword search — it fills the gap they can't cover.
 
 ## Architecture
 
-Three tables extend the existing `facts.db`:
+### Schema (SQLite + FTS5)
 
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│   facts     │     │  relations   │     │   aliases    │
-│  (existing) │     │  (new)       │     │   (new)      │
-├─────────────┤     ├──────────────┤     ├──────────────┤
-│ entity      │◄────│ subject      │     │ alias        │
-│ key         │     │ predicate    │     │ entity       │
-│ value       │     │ object   ────│──►  │              │
-│ category    │     │ weight       │     │ COLLATE      │
-│ source      │     │ source       │     │ NOCASE       │
-│ (FTS5)      │     │ (FTS5)       │     │              │
-└─────────────┘     └──────────────┘     └──────────────┘
-```
-
-### Tables
-
-**`relations`** — Subject-predicate-object triples:
 ```sql
+CREATE TABLE facts (
+    id INTEGER PRIMARY KEY,
+    entity TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    category TEXT NOT NULL,      -- event, project, infrastructure, identity, etc.
+    source TEXT,                  -- which file this came from
+    UNIQUE(entity, key, value)
+);
+
+CREATE VIRTUAL TABLE facts_fts USING fts5(entity, key, value, content=facts, content_rowid=id);
+
 CREATE TABLE relations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subject TEXT NOT NULL,        -- "Janna"
-    predicate TEXT NOT NULL,      -- "partner_of"
-    object TEXT NOT NULL,         -- "Sascha"
-    weight REAL DEFAULT 1.0,
-    source TEXT,                  -- "USER.md"
-    created_at TEXT DEFAULT (datetime('now')),
+    id INTEGER PRIMARY KEY,
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object TEXT NOT NULL,
+    source TEXT,
     UNIQUE(subject, predicate, object)
 );
-```
 
-**`aliases`** — Fuzzy entity resolution:
-```sql
 CREATE TABLE aliases (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    alias TEXT NOT NULL COLLATE NOCASE,  -- "Mama", "Heidi", "Mom"
-    entity TEXT NOT NULL,                 -- "Mama" (canonical)
-    UNIQUE(alias, entity)
+    alias TEXT NOT NULL,
+    entity TEXT NOT NULL,
+    PRIMARY KEY(alias, entity)
 );
 ```
 
-Both tables have FTS5 virtual tables for full-text search.
+### Current Scale
 
-## Search Pipeline
+| Metric | Count |
+|--------|-------|
+| Facts | 1,265 |
+| Relations | 488 |
+| Aliases | 125 |
+| Entities | 361 |
+| Source files | 74 |
 
-The graph search runs a 4-phase pipeline, highest confidence first:
+### Four-Phase Search Pipeline
 
-```
-Query: "What port does Keystone run on?"
-  │
-  ├─ Phase 1: Entity + Intent (score: 95)
-  │   Extract candidates: ["Keystone"]
-  │   Resolve alias: "Keystone" → "Project Keystone"
-  │   Extract intent: "runs_on" (from "port" keyword)
-  │   Match: relations WHERE subject="Project Keystone" AND predicate="runs_on"
-  │   → Project Keystone → runs_on → port 3055 (source: project-keystone.md) ✅
-  │
-  ├─ Phase 2: All entity facts (score: 70)
-  │   Fallback: return all facts for resolved entity
-  │
-  ├─ Phase 3: FTS on facts (score: 50)
-  │   When no entity resolves, search facts_fts
-  │
-  └─ Phase 4: FTS on relations (score: 40)
-      Search relations_fts for keyword matches
-```
+1. **Entity + Intent** (score 95): Query matches a known entity AND contains an intent keyword (birthday, phone, port, stack, etc.)
+2. **Entity Facts** (score 70): Query matches an entity via aliases — return all facts for that entity
+3. **FTS Facts** (score 50): Full-text search across `facts_fts` for keyword matches
+4. **FTS Relations** (score 40): Full-text search across relations for relationship queries
 
-### Entity Extraction
+Alias matching uses word boundaries (`\b`) to prevent false positives (e.g., "flo" matching inside "overflow").
 
-Candidates are extracted from queries via:
-1. **Capitalized words** — "Keystone", "Janna", "ClawSmith"
-2. **Multi-word combos** — "Home Assistant", "Dan Verakis"
-3. **Possessives** — "Janna's" → "Janna"
-4. **Self-reference** — "Who am I?" → agent identity entity
-5. **Alias DB scan** — multi-word aliases matched as phrases, single-word aliases on word boundaries
+## Data Sources
 
-### Intent Extraction
+### Manual Seeding (`graph-init.py`)
+Initial population from structured files: USER.md, family-contacts.md, project files, tool configs. Creates the core entity definitions with curated facts and relations.
 
-Query keywords map to fact keys:
-- "birthday", "born" → `birthday`
-- "phone", "number", "call" → `phone`
-- "port", "runs on" → `runs_on`
-- "stack", "tech", "uses" → `stack`
-- And 8 more patterns
+### Auto-Ingestion (`graph-ingest-daily.py`)
+Bulk extraction from daily journal files and memory files:
 
-## Entity Types
-
-The graph models 5 categories of entities:
-
-### People
-Entities with `category=person`. Facts: birthday, full_name, relationship, phone, email, address, birthplace.
-Relations: `partner_of`, `parent_of`, `child_of`, `sibling_of`, `friend_of`, `pet_of`, `married_to`.
-
-### Projects
-Entities with `category=project`. Facts: type, stack, status, url, server, github.
-Relations: `owns` (person → project), `uses` (project → technology), `runs_on` (project → port/server), `hosted_on`, `domain`.
-
-### Infrastructure
-Entities with `category=infrastructure`. Facts: fqdn, hardware, services, systemd config.
-Relations: `hosts` (server → service), `runs_on` (service → port), `configured_via`.
-
-### Documents
-Entities with `category=document`. Model procedural docs as entities when they're the *answer* to a query.
-Facts: type, file, purpose, includes, checks, schedule.
-Relations: `prevents`, `covers`, `described_in`.
-
-### Events
-Entities with `category=event`. Model significant incidents for temporal queries.
-Facts: type, fix, details, reason.
-Aliases map natural language to event entities: "OOM crash" → "OOM Crash Feb 17".
-
-## Setup
-
-### 1. Run graph-init.py
+- **Tagged entries**: Parses `[milestone|i=0.85]`, `[decision|i=0.9]` etc. from daily files → creates event entities with date, summary, importance, and project/tech relations
+- **Structured data**: Extracts key-value pairs from bullet points (URLs, ports, status)
+- **Section content**: Creates entities from `##` sections with >50 chars of content
+- **Auto-categorization**: `_infer_category()` classifies facts as event, project, infrastructure, identity, etc.
 
 ```bash
-python3 scripts/graph-init.py
+# Process all unindexed files
+python3 scripts/graph-ingest-daily.py
+
+# Dry run (show what would be added)
+python3 scripts/graph-ingest-daily.py --dry-run
+
+# Process one specific file
+python3 scripts/graph-ingest-daily.py --file memory/2026-02-18.md
+
+# Show graph statistics
+python3 scripts/graph-ingest-daily.py --stats
 ```
 
-This creates the `relations`, `aliases`, and `relations_fts` tables in your existing `facts.db`, then seeds with your entities. Edit the seed data in `graph-init.py` to match your setup.
+### Live Conversation (planned)
+Auto-populate the graph from conversations as they happen — graph grows organically without manual intervention.
 
-### 2. Run graph-export.py (for visualization)
+## OpenClaw Plugin Integration
+
+The **openclaw-plugin-graph-memory** wires graph search directly into OpenClaw's message pipeline:
+
+### How it works
+
+1. Hooks `before_agent_start` (priority 5, runs before continuity plugin)
+2. Extracts the user's last message, strips context injection blocks
+3. Spawns `graph-search.py --json` as a subprocess (2s timeout)
+4. Filters results: only injects when entities are matched (score ≥ 65), skips FTS-only noise
+5. Returns matching facts as `[GRAPH MEMORY]` prependContext block
+
+### Installation
 
 ```bash
-python3 scripts/graph-export.py
-# → memory/graph-data.json
+# Copy plugin to extensions directory
+cp -r plugin/ ~/.openclaw/extensions/openclaw-plugin-graph-memory/
+
+# Enable the plugin
+openclaw plugins enable graph-memory
+
+# Restart gateway
+openclaw gateway restart
 ```
 
-### 3. Open the viewer
+### What the agent sees
 
-Serve `memory/graph-viewer.html` + `memory/graph-data.json` via any static server:
+When a user asks "When is Partner's birthday?", the plugin injects before the LLM processes the message:
 
-```bash
-cd memory && python3 -m http.server 8099
-# → http://localhost:8099/graph-viewer.html
+```
+[GRAPH MEMORY]
+• Partner.birthday = July 7, 1976
+• Partner.full_name = Partner Boyd
+• Partner.relationship = User's girlfriend
+• Partner → partner_of → User
 ```
 
-Features: force-directed layout, hover tooltips with facts + relations, click-to-highlight connections, category filters, search.
+The agent gets the answer in context without needing to search files or make tool calls. Zero additional API cost, sub-2-second latency.
 
-## Maintaining the Graph
+## Context Optimization
 
-### Adding entities
+The graph enables aggressive trimming of workspace files loaded every session:
 
-```python
-import sqlite3
-db = sqlite3.connect('memory/facts.db')
+| File | Before | After | Savings |
+|------|--------|-------|---------|
+| MEMORY.md | 12.4KB | 3.5KB | -72% |
+| AGENTS.md | 14.7KB | 4.3KB | -70% |
+| **Total** | **27.1KB** | **7.8KB** | **~6,500 tokens/session** |
 
-# Add facts
-db.execute('INSERT OR IGNORE INTO facts (entity, key, value, category, source) VALUES (?,?,?,?,?)',
-    ('New Project', 'stack', 'React, Supabase', 'project', 'project-new.md'))
+**Why this works**: Facts that used to live in MEMORY.md (agent model map, dispatcher details, embedding setup) are now in the knowledge graph. The graph plugin injects only what's relevant per-turn instead of loading everything every session.
 
-# Add aliases
-db.execute('INSERT OR IGNORE INTO aliases (alias, entity) VALUES (?,?)',
-    ('new project', 'New Project'))
+## Key Lesson
 
-# Add relations
-db.execute('INSERT OR IGNORE INTO relations (subject, predicate, object, source) VALUES (?,?,?,?)',
-    ('Sascha', 'owns', 'New Project', 'project-new.md'))
+Memory is a **content problem**, not a technology problem. The progression:
 
-db.commit()
-# Rebuild FTS
-db.execute("INSERT INTO facts_fts(facts_fts) VALUES('rebuild')")
-db.commit()
-```
+1. **Embeddings** (vector search): Good for fuzzy recall, expensive, misses entity queries
+2. **BM25** (keyword search): Good for keyword matches, free, misses relationship queries
+3. **Knowledge graph**: Good for entity/relationship queries, free, misses fuzzy recall
+4. **Hybrid (graph + BM25)**: 100% recall, zero API cost
 
-### When to add what
-
-| You learn... | Add to... |
-|-------------|-----------|
-| New person (name, birthday, contact) | `facts` + `aliases` + family `relations` |
-| New project | `facts` (type, stack, url) + `relations` (owns, uses, runs_on) |
-| New tool/service | `facts` (infrastructure) + `relations` (hosts, runs_on) |
-| Major incident | `facts` (event) + `aliases` (natural language triggers) |
-| New procedural doc | `facts` (document) + `aliases` |
-
-### Graph hygiene
-
-Run `scripts/graph-export.py` after changes to regenerate the visualization data. The benchmark (`scripts/memory-benchmark.py`) can verify that new entities are findable.
-
-## Benchmark
-
-60 queries across 7 categories. Each query has an expected file. A query passes if the expected file appears in the top-6 results.
-
-```bash
-# Run all queries
-python3 scripts/memory-benchmark.py --method hybrid
-
-# Run one category
-python3 scripts/memory-benchmark.py --method hybrid --category PROJECTS
-
-# Verbose (show per-query results)
-python3 scripts/memory-benchmark.py --method hybrid --verbose
-
-# Save results to JSON
-python3 scripts/memory-benchmark.py --method hybrid --output results.json
-```
-
-### Categories
-
-| Category | Queries | Tests |
-|----------|---------|-------|
-| PEOPLE | 10 | Birthdays, phones, addresses, relationships |
-| TOOLS | 10 | API tokens, URLs, ports, workflows |
-| PROJECTS | 10 | Tech stacks, status, features, ports |
-| FACTS | 10 | Personal info, preferences, certifications |
-| OPERATIONAL | 10 | Gating policies, cron, heartbeat, architecture |
-| IDENTITY | 5 | Self-awareness, principles, name |
-| DAILY | 5 | Recent events, incidents, milestones |
-
-### Methods
-
-| Method | Description | Speed |
-|--------|-------------|-------|
-| `qmd` | QMD BM25 + root file keyword fallback | ~10s |
-| `vsearch` | QMD vector search (slow, loads model per query) | ~7min |
-| `graph` | Graph search only (facts.db + relations + aliases) | ~2s |
-| `hybrid` | Graph + QMD BM25 combined (recommended) | ~15s |
-
-## What the Graph Can't Do
-
-- **Fuzzy semantic recall** — "What were we talking about re: infrastructure?" needs embeddings, not graph lookups.
-- **Temporal reasoning** — "What happened last Tuesday?" requires date-aware search. Event entities are a workaround, not a real solution.
-- **Discovery** — The graph only finds what's been explicitly modeled. Unknown entities return nothing. Semantic search can discover related content the graph doesn't know about.
-
-That's why **hybrid** (graph + BM25/vector) is the recommended approach. Graph for precision, search for discovery.
+Structure beats embeddings. A well-organized SQLite database with aliases outperforms expensive vector databases for the queries that matter most.

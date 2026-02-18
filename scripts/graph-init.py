@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-DB_PATH = Path("/home/coolmann/clawd/memory/facts.db")
+DB_PATH = Path("/path/to/workspace/memory/facts.db")
 
 def create_schema(db: sqlite3.Connection):
     """Add graph tables to existing facts.db"""
@@ -22,9 +22,9 @@ def create_schema(db: sqlite3.Connection):
         -- Entity relationships as triples
         CREATE TABLE IF NOT EXISTS relations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject TEXT NOT NULL,        -- entity name (e.g., "Janna")
+            subject TEXT NOT NULL,        -- entity name (e.g., "Partner")
             predicate TEXT NOT NULL,      -- relationship type (e.g., "partner_of")
-            object TEXT NOT NULL,         -- target entity or value (e.g., "Sascha")
+            object TEXT NOT NULL,         -- target entity or value (e.g., "User")
             weight REAL DEFAULT 1.0,      -- relationship strength (for ranking)
             source TEXT,                  -- where this came from (e.g., "USER.md")
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -83,22 +83,22 @@ def seed_aliases(db: sqlite3.Connection):
         # People - nicknames and alternate names
         ("Mama", "Mama"),
         ("Heidi", "Mama"),
-        ("Heidi Kuhlmann-Becker", "Mama"),
-        ("Heidi Karin Kuhlmann-Becker", "Mama"),
+        ("Heidi UserLastName-Becker", "Mama"),
+        ("Heidi Karin UserLastName-Becker", "Mama"),
         ("Mama Heidi", "Mama"),
         ("Mom", "Mama"),
         ("Mutter", "Mama"),
         
         ("JoJo", "JoJo"),
         ("Johanna", "JoJo"),
-        ("Johanna Kuhlmann", "JoJo"),
+        ("Johanna UserLastName", "JoJo"),
         
         ("Flo", "Flo"),
         ("Florian", "Flo"),
         ("Florian Weitz", "Flo"),
         
-        ("Janna", "Janna"),
-        ("Janna Boyd", "Janna"),
+        ("Partner", "Partner"),
+        ("Partner Name", "Partner"),
         
         ("Louisa", "Louisa"),
         ("Louisa Weitz", "Louisa"),
@@ -117,8 +117,8 @@ def seed_aliases(db: sqlite3.Connection):
         ("Jim E", "Jim Ephraim"),
         ("Jim Ephraim", "Jim Ephraim"),
         
-        ("Sascha", "Sascha"),
-        ("Sascha Kuhlmann", "Sascha"),
+        ("User", "User"),
+        ("Your Name", "User"),
         
         ("Hendrik", "Hendrik"),
         
@@ -178,36 +178,36 @@ def seed_relations(db: sqlite3.Connection):
     
     relations = [
         # Family relationships
-        ("Janna", "partner_of", "Sascha", "USER.md"),
-        ("Sascha", "partner_of", "Janna", "USER.md"),
-        ("Mama", "mother_of", "Sascha", "USER.md"),
-        ("Sascha", "child_of", "Mama", "USER.md"),
-        ("JoJo", "daughter_of", "Sascha", "USER.md"),
-        ("Sascha", "parent_of", "JoJo", "USER.md"),
-        ("Louisa", "stepdaughter_of", "Sascha", "USER.md"),
-        ("Sascha", "stepparent_of", "Louisa", "USER.md"),
-        ("Flo", "stepson_of", "Sascha", "USER.md"),
-        ("Sascha", "stepparent_of", "Flo", "USER.md"),
-        ("Alexa", "sister_of", "Sascha", "USER.md"),
-        ("Sascha", "sibling_of", "Alexa", "USER.md"),
+        ("Partner", "partner_of", "User", "USER.md"),
+        ("User", "partner_of", "Partner", "USER.md"),
+        ("Mama", "mother_of", "User", "USER.md"),
+        ("User", "child_of", "Mama", "USER.md"),
+        ("JoJo", "daughter_of", "User", "USER.md"),
+        ("User", "parent_of", "JoJo", "USER.md"),
+        ("Louisa", "stepdaughter_of", "User", "USER.md"),
+        ("User", "stepparent_of", "Louisa", "USER.md"),
+        ("Flo", "stepson_of", "User", "USER.md"),
+        ("User", "stepparent_of", "Flo", "USER.md"),
+        ("Alexa", "sister_of", "User", "USER.md"),
+        ("User", "sibling_of", "Alexa", "USER.md"),
         ("Hendrik", "married_to", "Alexa", "USER.md"),
         ("Alexa", "married_to", "Hendrik", "USER.md"),
         
         # Friends
-        ("Dan Verakis", "friend_of", "Sascha", "USER.md"),
-        ("Jim Gardner", "friend_of", "Sascha", "USER.md"),
-        ("Jim Ephraim", "friend_of", "Sascha", "USER.md"),
+        ("Dan Verakis", "friend_of", "User", "USER.md"),
+        ("Jim Gardner", "friend_of", "User", "USER.md"),
+        ("Jim Ephraim", "friend_of", "User", "USER.md"),
         
         # Pets
-        ("Judy", "pet_of", "Sascha", "USER.md"),
-        ("Waffles", "pet_of", "Sascha", "USER.md"),
-        ("Pancakes", "pet_of", "Sascha", "USER.md"),
+        ("Judy", "pet_of", "User", "USER.md"),
+        ("Waffles", "pet_of", "User", "USER.md"),
+        ("Pancakes", "pet_of", "User", "USER.md"),
         
         # Projects → owner
-        ("Sascha", "owns", "Project Keystone", "MEMORY.md"),
-        ("Sascha", "owns", "ClawSmith", "MEMORY.md"),
-        ("Sascha", "owns", "Microdose Tracker", "MEMORY.md"),
-        ("Sascha", "owns", "Adult in Training", "MEMORY.md"),
+        ("User", "owns", "Project Keystone", "MEMORY.md"),
+        ("User", "owns", "ClawSmith", "MEMORY.md"),
+        ("User", "owns", "Microdose Tracker", "MEMORY.md"),
+        ("User", "owns", "Adult in Training", "MEMORY.md"),
         
         # Projects → tech stack
         ("Project Keystone", "uses", "XState v5", "project-keystone.md"),
@@ -243,20 +243,20 @@ def seed_relations(db: sqlite3.Connection):
         ("Postiz", "runs_on", "port 4007", "tools-infrastructure.md"),
         ("Komodo", "runs_on", "port 9120", "tools-infrastructure.md"),
         ("Home Assistant", "runs_on", "port 8123", "tools-home-assistant.md"),
-        ("n8n", "runs_on", "n8n.home.mykuhlmann.com", "tools-n8n.md"),
+        ("n8n", "runs_on", "n8n.home.example.com", "tools-n8n.md"),
         
         # Community
-        ("Sascha", "member_of", "ManKind Project", "USER.md"),
-        ("Sascha", "member_of", "All is One", "USER.md"),
-        ("Sascha", "certified_by", "Mindscape Psychedelic Institute", "USER.md"),
+        ("User", "member_of", "ManKind Project", "USER.md"),
+        ("User", "member_of", "All is One", "USER.md"),
+        ("User", "certified_by", "Mindscape Psychedelic Institute", "USER.md"),
         
         # Locations
-        ("Sascha", "lives_in", "South Elgin, IL", "USER.md"),
-        ("Sascha", "from", "Minden, Germany", "USER.md"),
+        ("User", "lives_in", "South Elgin, IL", "USER.md"),
+        ("User", "from", "Minden, Germany", "USER.md"),
         ("Mama", "lives_in", "Minden, Germany", "family-contacts.md"),
         ("Alexa", "lives_in", "Gütersloh, Germany", "USER.md"),
         ("JoJo", "lives_in", "Lexington, KY", "family-contacts.md"),
-        ("Janna", "from", "South Korea", "USER.md"),
+        ("Partner", "from", "South Korea", "USER.md"),
         
         # Agent team
         ("Gandalf", "agent_role", "main assistant", "SOUL.md"),
@@ -289,9 +289,9 @@ def verify(db: sqlite3.Connection):
     
     print("\n── Test Queries ──────────────────────────────────────")
     
-    # 1. Who is Janna? (resolve alias + get all facts + relations)
-    print("\n🔍 'Who is Janna?'")
-    entity = resolve_entity(db, "Janna")
+    # 1. Who is Partner? (resolve alias + get all facts + relations)
+    print("\n🔍 'Who is Partner?'")
+    entity = resolve_entity(db, "Partner")
     print(f"   Resolved: {entity}")
     facts = db.execute("SELECT key, value FROM facts WHERE entity = ?", (entity,)).fetchall()
     for k, v in facts:
@@ -300,9 +300,9 @@ def verify(db: sqlite3.Connection):
     for p, o in rels:
         print(f"   rel: {p} → {o}")
     
-    # 2. What does Sascha own?
-    print("\n🔍 'What does Sascha own?'")
-    rels = db.execute("SELECT object FROM relations WHERE subject = 'Sascha' AND predicate = 'owns'").fetchall()
+    # 2. What does User own?
+    print("\n🔍 'What does User own?'")
+    rels = db.execute("SELECT object FROM relations WHERE subject = 'User' AND predicate = 'owns'").fetchall()
     for r in rels:
         print(f"   → {r[0]}")
     
@@ -324,11 +324,11 @@ def verify(db: sqlite3.Connection):
         # Try family-contacts style — might be in a different entity name
         print("   No phone in facts.db — would need to check family-contacts.md")
     
-    # 5. Graph traversal: Sascha's family
-    print("\n🔍 'Sascha's family' (1-hop relationships)")
+    # 5. Graph traversal: User's family
+    print("\n🔍 'User's family' (1-hop relationships)")
     family_preds = ('parent_of', 'child_of', 'stepparent_of', 'sibling_of', 'partner_of')
     for pred in family_preds:
-        rels = db.execute("SELECT object FROM relations WHERE subject = 'Sascha' AND predicate = ?", (pred,)).fetchall()
+        rels = db.execute("SELECT object FROM relations WHERE subject = 'User' AND predicate = ?", (pred,)).fetchall()
         for r in rels:
             print(f"   {pred} → {r[0]}")
     

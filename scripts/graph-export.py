@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from collections import defaultdict
 
-DB_PATH = Path("/home/coolmann/clawd/memory/facts.db")
-OUT_PATH = Path("/home/coolmann/clawd/memory/graph-data.json")
+DB_PATH = Path("/path/to/workspace/memory/facts.db")
+OUT_PATH = Path("/path/to/workspace/memory/graph-data.json")
 
 def main():
     db = sqlite3.connect(str(DB_PATH))

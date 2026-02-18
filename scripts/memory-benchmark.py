@@ -26,7 +26,7 @@ from datetime import datetime
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-WORKSPACE = Path(os.environ.get("OPENCLAW_WORKSPACE", "/home/coolmann/clawd"))
+WORKSPACE = Path(os.environ.get("OPENCLAW_WORKSPACE", "/path/to/workspace"))
 TOP_K_DEFAULT = 6  # Result passes if expected file appears in top K results
 
 # ─── Benchmark Queries ───────────────────────────────────────────────────────
@@ -36,16 +36,16 @@ TOP_K_DEFAULT = 6  # Result passes if expected file appears in top K results
 
 QUERIES = [
     # ── PEOPLE (10 queries) ──────────────────────────────────────────────
-    ("When is Janna's birthday?", "family-contacts", "PEOPLE"),
-    ("What is Mama's phone number?", "family-contacts", "PEOPLE"),
-    ("Where does JoJo live?", "family-contacts", "PEOPLE"),
-    ("When was Florian born?", "family-contacts", "PEOPLE"),
-    ("What is Alexa's husband's name?", "USER.md", "PEOPLE"),
-    ("Who is Dan Verakis?", "USER.md", "PEOPLE"),
-    ("Jim Gardner email address", "USER.md", "PEOPLE"),
-    ("Jim Ephraim phone number", "USER.md", "PEOPLE"),
-    ("What pets does Sascha have?", "USER.md", "PEOPLE"),
-    ("Heidi Kuhlmann birthday", "family-contacts", "PEOPLE"),
+    ("When is Partner's birthday?", "family-contacts", "PEOPLE"),
+    ("What is Mom's phone number?", "family-contacts", "PEOPLE"),
+    ("Where does Daughter live?", "family-contacts", "PEOPLE"),
+    ("When was Son born?", "family-contacts", "PEOPLE"),
+    ("What is Sister's husband's name?", "USER.md", "PEOPLE"),
+    ("Who is Friend A?", "USER.md", "PEOPLE"),
+    ("Friend B email address", "USER.md", "PEOPLE"),
+    ("Friend C phone number", "USER.md", "PEOPLE"),
+    ("What pets does User have?", "USER.md", "PEOPLE"),
+    ("Mom birthday", "family-contacts", "PEOPLE"),
 
     # ── TOOLS (10 queries) ───────────────────────────────────────────────
     ("Home Assistant API token", "tools-home-assistant", "TOOLS"),
@@ -73,16 +73,16 @@ QUERIES = [
 
     # ── FACTS_DB (10 queries) ────────────────────────────────────────────
     # These test whether facts.db entities surface via memory search
-    ("Sascha's timezone", "USER.md", "FACTS"),
-    ("Where is Sascha from originally?", "USER.md", "FACTS"),
-    ("What certification does Sascha have?", "USER.md", "FACTS"),
-    ("Sascha's email address", "USER.md", "FACTS"),
+    ("User's timezone", "USER.md", "FACTS"),
+    ("Where is User from originally?", "USER.md", "FACTS"),
+    ("What certification does User have?", "USER.md", "FACTS"),
+    ("User's email address", "USER.md", "FACTS"),
     ("What is ManKind Project?", "USER.md", "FACTS"),
-    ("Janna's birthplace", "family-contacts", "FACTS"),
+    ("Partner's birthplace", "family-contacts", "FACTS"),
     ("Gen Hoe Restaurant location", "USER.md", "FACTS"),
-    ("What crypto does Sascha hold?", "USER.md", "FACTS"),
+    ("What crypto does User hold?", "USER.md", "FACTS"),
     ("Lao and Thai Spicy Noodle rating", "USER.md", "FACTS"),
-    ("What is Sascha's SAP background?", "USER.md", "FACTS"),
+    ("What is User's SAP background?", "USER.md", "FACTS"),
 
     # ── OPERATIONAL (10 queries) ─────────────────────────────────────────
     ("What are the gating policies?", "gating-policies", "OPERATIONAL"),
