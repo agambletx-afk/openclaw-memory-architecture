@@ -33,6 +33,12 @@ This architecture uses **each tool where it's strongest**.
 │  └───────┬────────┘  └────┬─────┘  └──────────────┘ │
 │          │                │                           │
 │  ┌───────┴────────────────┴────────────────────────┐ │
+│  │          KNOWLEDGE GRAPH (SQLite)                │ │
+│  │   facts.db + relations + aliases + FTS5          │ │
+│  │   Entity resolution → intent matching → lookup   │ │
+│  └───────┬────────────────┬────────────────────────┘ │
+│          │                │                           │
+│  ┌───────┴────────────────┴────────────────────────┐ │
 │  │            SEMANTIC SEARCH                       │ │
 │  │   QMD / Ollama / OpenAI embeddings              │ │
 │  └───────┬────────────────┬────────────────────────┘ │
@@ -159,6 +165,24 @@ SELECT * FROM facts_fts WHERE facts_fts MATCH 'birthday';
 ```
 
 Categories: `person`, `project`, `decision`, `convention`, `credential`, `preference`, `date`, `location`
+
+### Layer 4.5: Knowledge Graph (SQLite)
+For entity-relationship queries that keyword and vector search can't handle.
+
+```sql
+-- "What port does Keystone run on?"
+SELECT object FROM relations WHERE subject='Project Keystone' AND predicate='runs_on';
+-- → "port 3055" (instant, graph traversal)
+
+-- "Who is Mama?" (alias resolution → facts + relations)
+-- Resolves "Mama" → canonical entity → all facts + outgoing relations
+```
+
+Three tables extend `facts.db`: **relations** (subject-predicate-object triples), **aliases** (fuzzy entity names), and **relations_fts** (full-text search on triples).
+
+**Benchmark results:** Hybrid search (graph + BM25) achieved **60/60 (100%)** recall on a 60-query benchmark, up from **28/60 (46.7%)** with BM25 alone. The PROJECTS category went from 10% → 100%.
+
+See [`docs/knowledge-graph.md`](docs/knowledge-graph.md) for full documentation, schema, search pipeline, and benchmark methodology.
 
 ### Layer 5: Semantic Search
 For fuzzy recall where keywords don't match but meaning does. Works with:
@@ -533,6 +557,7 @@ This architecture was informed by:
 - **Shawn Harris** — [Building a Cognitive Architecture for Your OpenClaw Agent](https://shawnharris.com/building-a-cognitive-architecture-for-your-openclaw-agent/) (active-context.md, gating policies, runbooks)
 - **r/openclaw community** — Hybrid SQLite+FTS5+vector memory approach (structured facts, memory decay, decision extraction)
 - **CoderofTheWest** — [openclaw-plugin-continuity](https://github.com/CoderofTheWest/openclaw-plugin-continuity) and [openclaw-plugin-stability](https://github.com/CoderofTheWest/openclaw-plugin-stability) — runtime conversation archive, topic tracking, entropy monitoring, and principle alignment. Also discovered the [proprioceptive framing pattern](https://www.reddit.com/r/openclaw/comments/1r6rnq2/memory_fix_you_all_want/): identity docs must explicitly claim ownership of every memory system, or the agent won't use them
+- **Claw (r/openclaw)** — [Memory benchmark methodology](https://old.reddit.com/r/openclaw/comments/1r7nd4y/) proving content structure > embedding quality, and validating QMD over builtin search (82% vs 50%)
 - Battle-tested on a production OpenClaw deployment managing 14 agents across multiple projects.
 
 ## Changelog

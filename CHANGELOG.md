@@ -1,5 +1,47 @@
 # Changelog
 
+## v4.0 — 2026-02-18
+
+### Added
+- **Layer 4.5: Knowledge Graph** — lightweight entity-relationship graph built on SQLite
+  - `relations` table: subject-predicate-object triples (82 relations)
+  - `aliases` table: fuzzy entity resolution with NOCASE collation (109 aliases)
+  - `relations_fts`: FTS5 virtual table for full-text search on triples
+  - 4-phase search pipeline: entity+intent → entity facts → FTS facts → FTS relations
+  - Entity extraction from natural language (capitalized words, multi-word combos, possessives, self-reference)
+  - Intent extraction mapping query keywords to fact keys (birthday, phone, stack, runs_on, etc.)
+  - 5 entity types: people, projects, infrastructure, documents, events
+- **Memory search benchmark** — 60-query test suite across 7 categories
+  - Categories: PEOPLE, TOOLS, PROJECTS, FACTS, OPERATIONAL, IDENTITY, DAILY
+  - Methods: qmd, vsearch, graph, hybrid (graph + BM25)
+  - JSON result export for tracking improvements over time
+  - Progression: 46.7% → 100% across 5 iterations in one session
+- **Interactive graph viewer** — force-directed SVG visualization
+  - Hover tooltips with entity facts and relations
+  - Click-to-highlight connections
+  - Category filters (People, Projects, Infra, Docs, Identity)
+  - Search bar for entity filtering
+  - `templates/graph-viewer.html` + `scripts/graph-export.py`
+- **New scripts:**
+  - `scripts/graph-init.py` — schema creation + entity seeding
+  - `scripts/graph-search.py` — graph-augmented search engine
+  - `scripts/graph-export.py` — JSON export for the viewer
+  - `scripts/memory-benchmark.py` — 60-query recall benchmark (updated with graph + hybrid methods)
+- **Full documentation:** `docs/knowledge-graph.md` — schema, search pipeline, entity types, benchmark methodology, maintenance guide
+- Credit to Claw (r/openclaw) for benchmark methodology inspiration
+
+### Changed
+- Architecture diagram updated with Knowledge Graph layer between structured facts and semantic search
+- README updated with Layer 4.5 description and benchmark results
+- `scripts/memory-benchmark.py` expanded from QMD-only to 5 search methods (qmd, vsearch, openclaw, graph, hybrid)
+
+### Benchmark Results
+- BM25 only: 28/60 (46.7%)
+- Graph only: 33/60 (55.0%)
+- Hybrid (graph + BM25): **60/60 (100%)**
+- PROJECTS: 10% → 100%, PEOPLE: 60% → 100%, TOOLS: 20% → 100%
+- Key insight confirmed: "Memory is a content problem, not a technology problem"
+
 ## v3.1 — 2026-02-17
 
 ### Added
