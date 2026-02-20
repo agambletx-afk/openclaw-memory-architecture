@@ -81,20 +81,43 @@ function report() {
     for (const e of entries) {
         const day = (e.timestamp || '').substring(0, 10);
         if (!day) continue;
-        if (!byDay[day]) byDay[day] = { total: 0, injected: 0, avgLatency: [] };
-        byDay[day].total++;
-        if (e.injected) byDay[day].injected++;
-        byDay[day].avgLatency.push(e.latencyMs || 0);
+        if (!byDay[day]) byDay[day] = {};
+        const sys = e.system || 'unknown';
+        if (!byDay[day][sys]) byDay[day][sys] = { total: 0, injected: 0, latencies: [], distances: [] };
+        byDay[day][sys].total++;
+        if (e.injected) byDay[day][sys].injected++;
+        if (e.latencyMs) byDay[day][sys].latencies.push(e.latencyMs);
+        if (e.topDistance) byDay[day][sys].distances.push(e.topDistance);
     }
     
-    if (Object.keys(byDay).length > 1) {
-        console.log('\n--- Daily Trend ---');
-        for (const [day, data] of Object.entries(byDay).sort()) {
-            const avg = (data.avgLatency.reduce((a, b) => a + b, 0) / data.avgLatency.length).toFixed(1);
-            console.log(`  ${day}: ${data.total} queries, ${data.injected} injected, ${avg}ms avg`);
+    if (Object.keys(byDay).length > 0) {
+        console.log('\n--- Daily Breakdown by System ---');
+        for (const [day, syss] of Object.entries(byDay).sort()) {
+            console.log(`\n  ${day}:`);
+            for (const [sys, data] of Object.entries(syss).sort()) {
+                const avgLat = data.latencies.length > 0
+                    ? (data.latencies.reduce((a, b) => a + b, 0) / data.latencies.length).toFixed(0) + 'ms'
+                    : 'n/a';
+                const avgDist = data.distances.length > 0
+                    ? (data.distances.reduce((a, b) => a + b, 0) / data.distances.length).toFixed(3)
+                    : 'n/a';
+                console.log(`    ${sys.padEnd(18)} | ${data.total} queries | ${data.injected} injected | avg ${avgLat} | avgDist ${avgDist}`);
+            }
         }
     }
+
+    // System comparison — which system contributes most
+    console.log('\n--- System Contribution ---');
+    const allSystems = Object.keys(systems).sort();
+    const totalInjected = Object.values(systems).reduce((s, d) => s + d.injected, 0);
+    for (const sys of allSystems) {
+        const s = systems[sys];
+        const pct = totalInjected > 0 ? ((s.injected / totalInjected) * 100).toFixed(0) : '0';
+        const hitRate = s.latencies.length > 0 ? ((s.hits / s.latencies.length) * 100).toFixed(0) : '0';
+        console.log(`  ${sys.padEnd(18)} | ${pct}% of injections | ${hitRate}% hit rate | ${s.hits} hits, ${s.misses} misses`);
+    }
 }
+
 
 async function benchmark() {
     const { execSync } = require('child_process');

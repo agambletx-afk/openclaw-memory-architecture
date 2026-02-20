@@ -358,6 +358,20 @@ module.exports = {
 
             const builtinResults = parsed?.results || [];
 
+            // Telemetry: log QMD/BM25 results
+            try {
+                const qmdTel = {
+                    timestamp: new Date().toISOString(),
+                    system: 'qmd-bm25',
+                    query: parsed?.query || ctx.toolParams?.query || '',
+                    resultCount: builtinResults.length,
+                    topScore: builtinResults[0]?.score || null,
+                    injected: builtinResults.length > 0,
+                    latencyMs: null  // can't measure — core handles it
+                };
+                require('fs').appendFileSync('/tmp/openclaw/memory-telemetry.jsonl', JSON.stringify(qmdTel) + '\n');
+            } catch (_) {}
+
             // Only enrich if builtin returned few results (under 2)
             if (builtinResults.length >= 2) return;
 
