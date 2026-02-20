@@ -1,5 +1,92 @@
 # Changelog
 
+## v6.0 — Embedding Migration + Graph Plugin + Decay System (2026-02-20)
+
+### Embedding Stack Migration
+
+**Changed:**
+- Migrated from ONNX CPU (`all-MiniLM-L6-v2`, 384d) to llama.cpp GPU (`nomic-embed-text-v2-moe`, 768d)
+- Latency: 500ms → 7ms (70x faster)
+- Added multilingual support: 100+ languages including German
+- Rebuilt Continuity vector index with 768d (1,847 exchanges indexed)
+
+**Added:**
+- llama.cpp Docker container on port 8082 with ROCm GPU support
+- Q6_K quantization for balance of quality and speed
+- Permanent VRAM pinning (~580MB)
+
+**Removed:**
+- ONNX runtime dependency
+- Ollama fallback (replaced by direct llama.cpp)
+
+### Graph-memory Plugin (Layer 12)
+
+**Added:**
+- New runtime plugin: `openclaw-plugin-graph-memory`
+- Hooks `before_agent_start` event
+- Extracts entities from prompt, matches against facts.db
+- Injects `[GRAPH MEMORY]` context with matched entities
+- Score filtering: only injects when match score ≥ 65
+- Zero API cost, ~2s latency
+
+**Files:**
+- `plugin/index.js` — OpenClaw gateway plugin
+- `plugin/openclaw.plugin.json` — Configuration
+
+### Activation/Decay System
+
+**Added:**
+- `activation` column on facts table — tracks access frequency
+- `importance` column on facts table — retention weight
+- `co_occurrences` table — entity relationship wiring
+- Decay cron: `scripts/graph-decay.py` runs daily at 3 AM
+- Tiers: Hot (>2.0), Warm (1.0-2.0), Cool (<1.0)
+
+**Current distribution:**
+- Hot: 74 facts (highly accessed)
+- Warm: 1,554 facts
+- Cool: 1,433 facts
+
+### Domain RAG (Layer 5a)
+
+**Added:**
+- Ebooks RAG system for integration coaching content
+- 4,361 chunks from 27 documents (PDFs, markdown)
+- Content: 5-MeO-DMT guides, integration literature, blog posts
+- Weekly cron reindex: `scripts/ebook-rag-update.sh`
+- Location: `media/Ebooks/.rag/ebook_rag.db` (74 MB)
+
+**Note:** Currently uses brute-force cosine similarity. Should be upgraded to sqlite-vec.
+
+### Knowledge Graph Expansion
+
+**Scale:**
+- Facts: 1,265 → 3,108 (+146%)
+- Relations: 488 → 1,009 (+107%)
+- Aliases: 125 → 275 (+120%)
+
+**New content:**
+- 5-MeO-DMT domain: experts, research papers, drug interactions
+- Drug contraindications: MAOI, Lithium, SSRIs, SNRIs
+- Brand name aliases: Prozac → Fluoxetine, Paxil → Paroxetine, etc.
+
+### Memory Telemetry
+
+**Added:**
+- Telemetry logging: `/tmp/openclaw/memory-telemetry.jsonl`
+- Tracks latency, result counts, injection status
+- 571 entries (graph-memory + continuity)
+- Per-prompt metrics for performance monitoring
+
+### Documentation Updates
+
+**Changed:**
+- `docs/ARCHITECTURE.md` — Updated embedding stack, added Layers 5a and 12
+- `README.md` — Updated architecture diagram, quick reference table
+- `docs/COMPARISON.md` — Added documentation vs reality comparison
+
+---
+
 ## v5.0 — Pipeline Integration + Auto-Ingestion (2026-02-18)
 
 ### New: OpenClaw Plugin (`plugin/`)
@@ -62,11 +149,15 @@
 - Local Ollama embeddings (nomic-embed-text, 768d)
 - Memory file indexing across workspace
 
+---
+
 ## v2.0 — Continuity Plugin (2026-02-14)
 
 - Conversation archive with semantic search (SQLite-vec)
 - Context budgeting and priority tiers
 - Topic tracking and continuity anchors
+
+---
 
 ## v1.0 — Initial Architecture (2026-02-10)
 
