@@ -164,3 +164,48 @@
 - MEMORY.md + daily files pattern
 - Active-context.md working memory
 - Gating policies for failure prevention
+
+## 2026-02-20 — llama.cpp Embedding Backend + Telemetry
+
+### plugin-continuity (forked from CoderofTheWest/openclaw-plugin-continuity)
+- **BREAKING**: Replaced ONNX embedding (MiniLM-L6-v2, 384d) with llama.cpp GPU backend (nomic-embed-text-v1.5, 768d)
+- ONNX retained as fallback if llama.cpp server is unavailable
+- Fixed init order: embeddings initialize before table creation (prevents dimension mismatch)
+- Auto-detects dimension changes and recreates vector table
+- Added search telemetry logging to `/tmp/openclaw/memory-telemetry.jsonl`
+- Default dimensions changed from 384 → 768
+- Performance: 6.5ms avg search (was ~240ms), 12s full re-index (was ~6.5min)
+- Configurable via `LLAMA_EMBED_URL` env var (default: `http://localhost:8082`)
+
+### plugin-graph-memory
+- Added search telemetry logging (latency, result count, entity matches, FTS hits)
+- Added timing instrumentation on graph search
+
+### scripts/memory-telemetry.js (NEW)
+- `report` — aggregate stats by system (p50/p95 latency, hit rates, injection rates)
+- `benchmark` — 10 golden queries across both systems (currently scoring 100%)
+- `tail` — live telemetry watch
+
+### Infrastructure
+- New Docker container: `llama-embed` (llama.cpp + nomic-embed-text-v1.5-f16.gguf on ROCm GPU)
+- Managed via Komodo stack on port 8082
+
+## 2026-02-20 — plugins.allow Fix, Graph Telemetry Debug, Documentation
+
+### Bug Fix
+- **plugins.allow was blocking graph-memory** — the allowlist set on Feb 17 didn't include `graph-memory`, so the plugin never loaded despite being `enabled: true`. No errors were logged — it was completely silent. Fixed by adding `graph-memory` to allow list.
+
+### plugin-graph-memory
+- Added telemetry for ALL exit paths: too-short queries, no-entity-match, empty results, errors
+- Debug logging for `_stripContextBlocks` behavior
+
+### plugin-continuity
+- Added QMD/BM25 telemetry via `tool_result_persist` hook
+
+### Documentation
+- Added `plugins.allow` gotcha with handler count verification method
+- Updated continuity plugin section: llama.cpp GPU embeddings (768d), 60x faster
+- Added Search Telemetry section with report/benchmark/tail usage
+- Updated embedding options table with llama.cpp + latency comparison
+- Added llama.cpp embedding server Docker setup guide
+- Added nomic-embed-text task prefix documentation

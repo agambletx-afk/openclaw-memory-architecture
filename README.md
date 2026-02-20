@@ -121,11 +121,13 @@ This architecture uses **each tool where it's strongest**.
 
 ## Embedding Options
 
-| Provider | Cost | Latency | Quality | Notes |
-|----------|------|---------|---------|-------|
-| **llama.cpp (GPU)** | Free | 7ms | Great | Multilingual, local |
-| **QMD (built-in)** | Free | ~4s | Best (reranked) | OpenClaw native |
-| **OpenAI** | ~$0.02/M | ~200ms | Great | Cloud API |
+| Provider | Cost | Latency | Dims | Quality | Notes |
+|----------|------|---------|------|---------|-------|
+| **llama.cpp (GPU)** | Free | **4ms** | 768 | Best | Multilingual, local |
+| **Ollama nomic-embed-text** | Free | 61ms | 768 | Good | `ollama pull nomic-embed-text` |
+| **ONNX MiniLM-L6-v2** | Free | 240ms | 384 | Fair | Built into continuity plugin |
+| **QMD (built-in)** | Free | ~4s | — | Best (reranked) | OpenClaw native |
+| **OpenAI** | ~$0.02/M | ~200ms | 1536 | Great | Cloud API |
 
 **Recommendation:** llama.cpp for speed and multilingual support. QMD for best quality when latency is acceptable.
 
@@ -153,13 +155,26 @@ python3 scripts/seed-facts.py
 
 For llama.cpp GPU (recommended):
 
-```bash
-# Pull model
-docker exec llama-embed ollama pull nomic-embed-text-v2-moe
-
-# Pin in VRAM
-curl -s http://localhost:8082/v1/embeddings \
-  -d '{"model":"nomic-embed-text-v2-moe","input":"test"}'
+```yaml
+# docker-compose.yml for dedicated embedding server
+services:
+  llama-embed:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: llama-embed
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./models:/models:ro
+    command: >
+      llama-server
+        -m /models/nomic-embed-text-v2-moe.Q6_K.gguf
+        --embedding
+        --pooling mean
+        -c 2048
+        -ngl 999
+        --host 0.0.0.0
+        --port 8080
 ```
 
 ### 5. Enable Plugins
@@ -172,9 +187,21 @@ git clone https://github.com/CoderofTheWest/openclaw-plugin-graph-memory.git
 
 # Install dependencies
 for d in openclaw-plugin-*; do cd "$d" && npm install && cd ..; done
+```
 
-# Enable in ~/.openclaw/openclaw.json
-# "plugins": { "entries": { "continuity": true, "stability": true, "graph-memory": true } }
+Enable in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "allow": ["continuity", "stability", "graph-memory", "telegram", "discord"],
+    "entries": {
+      "continuity": { "enabled": true },
+      "stability": { "enabled": true },
+      "graph-memory": { "enabled": true }
+    }
+  }
+}
 ```
 
 ### 6. Schedule Decay Cron
