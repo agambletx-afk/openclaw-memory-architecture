@@ -29,7 +29,7 @@ const DEFAULTS = {
     enabled: true,
     maxResults: 8,
     minScore: 50,
-    timeoutMs: 2000,
+    timeoutMs: 500,           // Reduced from 2000ms for faster fallback
     activationBump: 0.5,
     activationWeight: 0.3,    // 30% of combined score from activation
     relevanceWeight: 0.7,     // 70% of combined score from search relevance
@@ -37,6 +37,7 @@ const DEFAULTS = {
     coOccurrenceMinWeight: 2, // minimum co-occurrence weight to consider
     cacheSize: 10,            // LRU cache size for repeated queries
     cacheTTL: 60000,          // Cache TTL in ms (60 seconds)
+    showEmptyResults: false,  // Set to true to show "[GRAPH MEMORY] No matching entities found"
 };
 
 // Simple LRU cache for query results
@@ -312,6 +313,9 @@ module.exports = {
 
                 if (!results || results.length === 0) {
                     writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, injected: false });
+                    if (config.showEmptyResults) {
+                        return { prependContext: '[GRAPH MEMORY] No matching entities found.' };
+                    }
                     return { prependContext: '' };
                 }
 
@@ -324,6 +328,9 @@ module.exports = {
                     : [];
                 if (filtered.length === 0) {
                     writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, entityMatched: 0, ftsOnly: ftsOnly.length, injected: false, reason: 'no-entity-match' });
+                    if (config.showEmptyResults) {
+                        return { prependContext: '[GRAPH MEMORY] No high-confidence entity matches (score < 65).' };
+                    }
                     return { prependContext: '' };
                 }
 
