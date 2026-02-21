@@ -35,7 +35,64 @@ const DEFAULTS = {
     relevanceWeight: 0.7,     // 70% of combined score from search relevance
     coOccurrenceLimit: 4,     // max co-occurring facts to pull in
     coOccurrenceMinWeight: 2, // minimum co-occurrence weight to consider
+    cacheSize: 10,            // LRU cache size for repeated queries
+    cacheTTL: 60000,          // Cache TTL in ms (60 seconds)
 };
+
+// Simple LRU cache for query results
+class QueryCache {
+    constructor(maxSize = 10, ttlMs = 60000) {
+        this.maxSize = maxSize;
+        this.ttlMs = ttlMs;
+        this.cache = new Map();
+    }
+    
+    get(key) {
+        const entry = this.cache.get(key);
+        if (!entry) return null;
+        if (Date.now() - entry.timestamp > this.ttlMs) {
+            this.cache.delete(key);
+            return null;
+        }
+        // Move to end (most recently used)
+        this.cache.delete(key);
+        this.cache.set(key, entry);
+        return entry.results;
+    }
+    
+    set(key, results) {
+        // Remove oldest if at capacity
+        if (this.cache.size >= this.maxSize) {
+            const oldest = this.cache.keys().next().value;
+            this.cache.delete(oldest);
+        }
+        this.cache.set(key, { results, timestamp: Date.now() });
+    }
+    
+    clear() {
+        this.cache.clear();
+    }
+}
+
+// Async telemetry writer (non-blocking)
+const telemetryQueue = [];
+let telemetryFlushPending = false;
+
+function writeTelemetry(data) {
+    telemetryQueue.push(JSON.stringify(data) + '\n');
+    if (!telemetryFlushPending) {
+        telemetryFlushPending = true;
+        setImmediate(() => {
+            const batch = telemetryQueue.splice(0, telemetryQueue.length);
+            telemetryFlushPending = false;
+            if (batch.length > 0) {
+                fs.appendFile('/tmp/openclaw/memory-telemetry.jsonl', batch.join(''), (err) => {
+                    if (err) console.error('[graph-memory] telemetry write error:', err.message);
+                });
+            }
+        });
+    }
+}
 
 // ---------------------------------------------------------------------------
 // SQLite helper — lightweight direct access for activation/co-occurrence
@@ -206,13 +263,17 @@ module.exports = {
 
         // Open direct DB connection for activation/co-occurrence
         const db = getDb(dbPath);
+        
+        // Initialize query cache
+        const queryCache = new QueryCache(config.cacheSize, config.cacheTTL);
+        
         if (db) {
             const stats = db.prepare('SELECT COUNT(*) as cnt FROM co_occurrences').get();
-            api.logger?.info?.(`graph-memory v2: armed (db=${dbPath}, co-occurrences=${stats.cnt})`);
+            api.logger?.info?.(`graph-memory v2: armed (db=${dbPath}, co-occurrences=${stats.cnt}, cache=${config.cacheSize})`);
         } else {
             api.logger?.info?.(`graph-memory: armed WITHOUT activation (db=${dbPath})`);
         }
-        console.log('[plugins] Graph Memory v2 plugin registered — activation + co-occurrence active');
+        console.log('[plugins] Graph Memory v2 plugin registered — activation + co-occurrence + cache active');
 
         // -------------------------------------------------------------------
         // HOOK: before_agent_start — Inject graph search results
@@ -229,22 +290,27 @@ module.exports = {
 
                 const cleanText = _stripContextBlocks(userText).trim();
                 if (!cleanText || cleanText.length < 5) {
-                    try {
-                        require('fs').appendFileSync('/tmp/openclaw/memory-telemetry.jsonl',
-                            JSON.stringify({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText?.substring(0, 50) || '(empty)', resultCount: 0, injected: false, reason: 'too-short', rawLen: userText?.length || 0 }) + '\n');
-                    } catch (_) {}
+                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText?.substring(0, 50) || '(empty)', resultCount: 0, injected: false, reason: 'too-short', rawLen: userText?.length || 0 });
                     return { prependContext: '' };
                 }
 
                 // Run graph search (returns results with fact_ids now)
                 event._graphSearchStart = Date.now();
-                const results = await _runGraphSearch(scriptPath, cleanText, config);
+                
+                // Check cache first
+                const cacheKey = cleanText.substring(0, 100).toLowerCase();
+                let results = queryCache.get(cacheKey);
+                const cacheHit = !!results;
+                
+                if (!results) {
+                    results = await _runGraphSearch(scriptPath, cleanText, config);
+                    if (results && results.length > 0) {
+                        queryCache.set(cacheKey, results);
+                    }
+                }
 
                 if (!results || results.length === 0) {
-                    try {
-                        require('fs').appendFileSync('/tmp/openclaw/memory-telemetry.jsonl',
-                            JSON.stringify({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, injected: false }) + '\n');
-                    } catch (_) {}
+                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, injected: false });
                     return { prependContext: '' };
                 }
 
@@ -256,10 +322,7 @@ module.exports = {
                     ? [...entityMatched, ...ftsOnly]
                     : [];
                 if (filtered.length === 0) {
-                    try {
-                        require('fs').appendFileSync('/tmp/openclaw/memory-telemetry.jsonl',
-                            JSON.stringify({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, entityMatched: 0, ftsOnly: ftsOnly.length, injected: false, reason: 'no-entity-match' }) + '\n');
-                    } catch (_) {}
+                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, entityMatched: 0, ftsOnly: ftsOnly.length, injected: false, reason: 'no-entity-match' });
                     return { prependContext: '' };
                 }
 
@@ -356,19 +419,17 @@ module.exports = {
                         topEntity: topResults[0]?.entity,
                         entityMatched: entityMatched.length,
                         ftsOnly: ftsOnly.length,
+                        cacheHit,
                         injected: true
                     };
-                    require('fs').appendFileSync('/tmp/openclaw/memory-telemetry.jsonl', JSON.stringify(telemetry) + '\n');
+                    writeTelemetry(telemetry);
                 } catch (_telErr) { /* non-blocking */ }
 
                 return { prependContext: lines.join('\n') };
 
             } catch (err) {
                 console.error(`[graph-memory] before_agent_start failed: ${err.message}`);
-                try {
-                    require('fs').appendFileSync('/tmp/openclaw/memory-telemetry.jsonl',
-                        JSON.stringify({ timestamp: new Date().toISOString(), system: 'graph-memory', query: '(error)', resultCount: 0, injected: false, error: err.message.substring(0, 200) }) + '\n');
-                } catch (_) {}
+                writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: '(error)', resultCount: 0, injected: false, error: err.message.substring(0, 200) });
                 return { prependContext: '' };
             }
         }, { priority: 5 });
@@ -401,14 +462,57 @@ function _extractText(message) {
 }
 
 function _stripContextBlocks(text) {
-    return text
-        .replace(/\[CONTINUITY CONTEXT\][\s\S]*?(?=\n\n|\n[A-Z]|$)/g, '')
-        .replace(/\[STABILITY CONTEXT\][\s\S]*?(?=\n\n|\n[A-Z]|$)/g, '')
-        .replace(/\[GRAPH MEMORY\][\s\S]*?(?=\n\n|\n[A-Z]|$)/g, '')
-        .replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\n/g, '')
-        .replace(/Replied message \(untrusted[\s\S]*?```\n/g, '')
+    // Strategy: find the last metadata/context marker, take everything after it as user text.
+    // Markers: ```\n (end of JSON block), "Speak from this memory naturally.", System: lines
+    
+    let result = text;
+    
+    // Approach: split on known end-of-metadata patterns and take the last segment
+    // The user's actual message is always LAST, after all context blocks
+    
+    // Find the last closing ``` (not opening ```json or ```xml etc.)
+    // Closing fences are ``` followed by newline, EOF, or whitespace — not a word char
+    let lastCodeFence = -1;
+    const fenceRegex = /```(?!\w)/g;
+    let match;
+    while ((match = fenceRegex.exec(result)) !== null) {
+        lastCodeFence = match.index;
+    }
+    if (lastCodeFence !== -1) {
+        const afterFence = result.substring(lastCodeFence + 3).trim();
+        // Check if there's actual user content after the fence
+        // Strip any remaining context lines
+        const cleaned = afterFence
+            .replace(/^Speak from this memory naturally\.[^\n]*\n?/gm, '')
+            .replace(/^\[TOPIC NOTE\].*\n?/gm, '')
+            .replace(/^System:.*\n?/gm, '')
+            .replace(/^Entropy:.*\n?/gm, '')
+            .replace(/^Principles:.*\n?/gm, '')
+            .replace(/^\[STABILITY CONTEXT\][\s\S]*?(?=\n\n)/gm, '')
+            .replace(/^\[CONTINUITY CONTEXT\][\s\S]*?(?=\n\n)/gm, '')
+            .replace(/^\[GRAPH MEMORY\][\s\S]*?(?=\n\n)/gm, '')
+            .trim();
+        console.log(`[graph-memory] strip: afterFence="${afterFence.substring(0, 80)}" cleaned="${cleaned.substring(0, 80)}" len=${cleaned.length}`);
+        if (cleaned.length >= 3) {
+            return cleaned;
+        }
+    }
+    
+    // Fallback: strip known blocks individually
+    result = result
+        .replace(/\[CONTINUITY CONTEXT\][\s\S]*?\n\n/g, '')
+        .replace(/\[STABILITY CONTEXT\][\s\S]*?\n\n/g, '')
+        .replace(/\[GRAPH MEMORY\][\s\S]*?\n\n/g, '')
+        .replace(/\[TOPIC NOTE\].*?\n/g, '')
+        .replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*\n?/g, '')
+        .replace(/Replied message \(untrusted[\s\S]*?```\s*\n?/g, '')
+        .replace(/You remember these earlier[\s\S]*?Speak from this memory naturally\.[^\n]*\n?/g, '')
         .replace(/System:.*?\n/g, '')
+        .replace(/Entropy:.*?\n/g, '')
+        .replace(/Principles:.*?\n/g, '')
         .trim();
+    
+    return result;
 }
 
 function _runGraphSearch(scriptPath, query, config) {

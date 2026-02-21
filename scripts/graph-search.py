@@ -16,14 +16,17 @@ import sys
 import argparse
 from pathlib import Path
 
-DB_PATH = Path("/path/to/workspace/memory/facts.db")
+DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
 
 
 def resolve_entity(db: sqlite3.Connection, name: str) -> str | None:
     """Resolve alias to canonical entity name"""
-    row = db.execute("SELECT entity FROM aliases WHERE alias = ? COLLATE NOCASE", (name,)).fetchone()
-    if row:
-        return row[0]
+    try:
+        row = db.execute("SELECT entity FROM aliases WHERE alias = ? COLLATE NOCASE", (name,)).fetchone()
+        if row:
+            return row[0]
+    except sqlite3.OperationalError:
+        pass  # aliases table may not exist
     row = db.execute("SELECT DISTINCT entity FROM facts WHERE entity = ? COLLATE NOCASE", (name,)).fetchone()
     if row:
         return row[0]
@@ -86,10 +89,15 @@ def extract_entity_candidates(query: str) -> list[str]:
     # Skip very short/generic aliases to avoid false matches
     SKIP_ALIASES = {"i", "me", "my name", "who am i", "ha", "the server"}
     try:
-        db_path = Path("/path/to/workspace/memory/facts.db")
+        db_path = DB_PATH
         if db_path.exists():
             _db = sqlite3.connect(str(db_path))
-            all_aliases = [r[0] for r in _db.execute("SELECT DISTINCT alias FROM aliases").fetchall()]
+            # aliases table may not exist yet
+            _has_aliases = _db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='aliases'").fetchone()
+            if _has_aliases:
+                all_aliases = [r[0] for r in _db.execute("SELECT DISTINCT alias FROM aliases").fetchall()]
+            else:
+                all_aliases = []
             _db.close()
             for alias in all_aliases:
                 if alias.lower() in SKIP_ALIASES:
