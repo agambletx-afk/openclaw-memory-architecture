@@ -232,9 +232,9 @@ The 96GB unified VRAM enables running large models without swapping. Smaller set
 
 This architecture was informed by:
 - **David Badre** — *On Task: How the Brain Gets Things Done*
-- **Shawn Harris** — Cognitive architecture patterns
-- **r/openclaw community** — Hybrid memory approach
-- **CoderofTheWest** — Continuity, stability, and graph-memory plugins
+- **Shawn Harris** — [Building a Cognitive Architecture for Your OpenClaw Agent](https://shawnharris.com/building-a-cognitive-architecture-for-your-openclaw-agent/) — Memory gating, active-context patterns, gating policies
+- **r/openclaw community** — [How I Built a Memory System That Actually Works](https://old.reddit.com/r/openclaw/comments/1r7nd4y/how_i_built_a_memory_system_that_actually_works/) — Hybrid search benchmarking
+- **CoderofTheWest** — Continuity, stability, and metabolism plugins
 
 ## Changelog
 
