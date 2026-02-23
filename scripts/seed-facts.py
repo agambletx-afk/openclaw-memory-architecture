@@ -8,8 +8,10 @@ Edit the FACTS list below with your own data, then run:
 import sqlite3
 import os
 import argparse
+from pathlib import Path
 
-DB_PATH = os.environ.get("FACTS_DB", "memory/facts.db")
+DEFAULT_LEGACY_DB_PATH = Path("memory/facts.db")
+
 
 # ─── Edit these with your own facts ─────────────────────────────────────────
 # Format: (entity, key, value, category, source, permanent)
@@ -40,8 +42,22 @@ FACTS = [
     # ("convention", "always check timezone before stating time", "Run TZ command, never do mental math", "convention", "AGENTS.md", 1),
 ]
 
+
+def resolve_db_path(cli_db_path: str | None = None) -> Path:
+    """Resolve facts.db path from CLI, FACTS_DB env var, then legacy fallback."""
+    if cli_db_path:
+        return Path(cli_db_path).expanduser()
+
+    env_db_path = os.environ.get("FACTS_DB")
+    if env_db_path:
+        return Path(env_db_path).expanduser()
+
+    return DEFAULT_LEGACY_DB_PATH
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Seed facts into facts.db")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides FACTS_DB env var)")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -50,16 +66,16 @@ def parse_args():
     return parser.parse_args()
 
 
-def seed(dry_run: bool = False):
-    if not os.path.exists(DB_PATH):
-        print(f"❌ {DB_PATH} not found. Run init-facts-db.py first.")
+def seed(db_path: Path, dry_run: bool = False):
+    if not db_path.exists():
+        print(f"❌ {db_path} not found. Run init-facts-db.py first.")
         return
 
     if not FACTS:
         print("⚠️  No facts to seed. Edit FACTS list in this file first.")
         return
 
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(str(db_path))
 
     inserted = 0
     skipped = 0
@@ -102,6 +118,7 @@ def seed(dry_run: bool = False):
         print(f"✅ Seeded {inserted} facts ({skipped} duplicates skipped). Total: {total}")
     db.close()
 
+
 if __name__ == "__main__":
     args = parse_args()
-    seed(dry_run=args.dry_run)
+    seed(db_path=resolve_db_path(args.db_path), dry_run=args.dry_run)

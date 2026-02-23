@@ -374,6 +374,14 @@ def resolve_entity(db: sqlite3.Connection, name: str) -> str:
     return name
 
 
+def table_exists(db: sqlite3.Connection, table_name: str) -> bool:
+    row = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Initialize graph schema/seed data in facts.db")
     parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
@@ -386,15 +394,23 @@ def main():
 
     db = sqlite3.connect(str(db_path))
     db.execute("PRAGMA journal_mode=WAL")
-    
-    print(f"📦 Database: {db_path}")
-    print(f"   Existing facts: {db.execute('SELECT COUNT(*) FROM facts').fetchone()[0]}")
-    print()
-    
+
     create_schema(db)
+
+    print(f"📦 Database: {db_path}")
+    if table_exists(db, "facts"):
+        print(f"   Existing facts: {db.execute('SELECT COUNT(*) FROM facts').fetchone()[0]}")
+    else:
+        print("   Existing facts: table not found (fresh database)")
+    print()
+
     seed_aliases(db)
     seed_relations(db)
-    verify(db)
+
+    if table_exists(db, "facts"):
+        verify(db)
+    else:
+        print("⚠️  Skipping verification queries that depend on facts table.")
     
     db.close()
     print("\n✅ Graph prototype ready!")
