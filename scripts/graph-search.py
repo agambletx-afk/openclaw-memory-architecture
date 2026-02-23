@@ -17,6 +17,8 @@ import argparse
 import os
 from pathlib import Path
 
+DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
+DEBUG = False
 DEFAULT_LEGACY_DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
 DB_PATH = DEFAULT_LEGACY_DB_PATH
 
@@ -143,8 +145,9 @@ def extract_entity_candidates(query: str) -> list[str]:
                     pattern = r'\b' + re.escape(alias_lower) + r'\b'
                     if re.search(pattern, query_lower) and alias not in candidates:
                         candidates.append(alias)
-    except Exception:
-        pass
+    except (sqlite3.Error, OSError) as exc:
+        if DEBUG:
+            print(f"[graph-search] alias scan failed: {exc}", file=sys.stderr)
     
     return candidates
 
@@ -293,8 +296,9 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
                             "entity": entity,
                             "method": "fts"
                         })
-            except Exception:
-                pass
+            except sqlite3.Error as exc:
+                if DEBUG:
+                    print(f"[graph-search] facts FTS failed: {exc}", file=sys.stderr)
     
     # Phase 4: FTS on relations
     if len(results) < top_k:
@@ -323,8 +327,9 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
                             "entity": subj,
                             "method": "fts_rel"
                         })
-            except Exception:
-                pass
+            except sqlite3.Error as exc:
+                if DEBUG:
+                    print(f"[graph-search] relations FTS failed: {exc}", file=sys.stderr)
     
     # Sort by score, return top-K
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -336,6 +341,13 @@ def main():
     parser.add_argument("query", help="Search query")
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--top-k", "-k", type=int, default=6)
+    parser.add_argument("--debug", action="store_true", help="Show backend/database errors")
+    args = parser.parse_args()
+
+    global DEBUG
+    DEBUG = args.debug
+    
+    db = sqlite3.connect(str(DB_PATH))
     parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
     args = parser.parse_args()
 
