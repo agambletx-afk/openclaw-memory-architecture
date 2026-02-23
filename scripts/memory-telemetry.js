@@ -118,9 +118,15 @@ function report() {
     }
 }
 
+function resolveGraphSearchScriptPath() {
+    if (process.env.OPENCLAW_WORKSPACE) {
+        return path.join(process.env.OPENCLAW_WORKSPACE, 'scripts', 'graph-search.py');
+    }
+    return path.join(__dirname, 'graph-search.py');
+}
 
 async function benchmark() {
-    const { execSync } = require('child_process');
+    const { execSync, execFileSync } = require('child_process');
     
     console.log('=== Golden Query Benchmark ===\n');
     
@@ -129,9 +135,16 @@ async function benchmark() {
     let graphPass = 0;
     for (const gq of GOLDEN_QUERIES.filter(q => q.expectSystem === 'graph')) {
         try {
-            const result = execSync(
-                `python3 /home/coolmann/clawd/scripts/graph-search.py "${gq.query}" 2>/dev/null`,
-                { timeout: 5000, encoding: 'utf8' }
+            const scriptPath = resolveGraphSearchScriptPath();
+            const result = execFileSync(
+                'python3',
+                [scriptPath, gq.query],
+                {
+                    shell: false,
+                    timeout: 5000,
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                }
             );
             const hasEntity = gq.expectEntity ? result.includes(gq.expectEntity) : true;
             const status = hasEntity ? '✅' : '❌';

@@ -19,7 +19,6 @@ from pathlib import Path
 
 from fts_helper import build_or_match_query
 
-DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
 DEBUG = False
 DEFAULT_LEGACY_DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
 DB_PATH = DEFAULT_LEGACY_DB_PATH
