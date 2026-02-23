@@ -11,9 +11,32 @@ Run once to create schema, then again to seed from existing data.
 
 import sqlite3
 import sys
+import os
+import argparse
 from pathlib import Path
 
-DB_PATH = Path("/path/to/workspace/memory/facts.db")
+DEFAULT_LEGACY_DB_PATH = Path("/path/to/workspace/memory/facts.db")
+
+
+def resolve_db_path(cli_db_path: str | None = None) -> Path:
+    """Resolve facts.db path from CLI, OPENCLAW_WORKSPACE, CWD, then legacy fallback."""
+    if cli_db_path:
+        return Path(cli_db_path).expanduser()
+
+    workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if workspace:
+        return Path(workspace).expanduser() / "memory" / "facts.db"
+
+    cwd_candidate = Path.cwd() / "memory" / "facts.db"
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    print(
+        f"[graph-init] warning: using legacy facts.db path {DEFAULT_LEGACY_DB_PATH}. "
+        "Set OPENCLAW_WORKSPACE or --db-path for portability.",
+        file=sys.stderr,
+    )
+    return DEFAULT_LEGACY_DB_PATH
 
 def create_schema(db: sqlite3.Connection):
     """Add graph tables to existing facts.db"""
@@ -352,10 +375,19 @@ def resolve_entity(db: sqlite3.Connection, name: str) -> str:
 
 
 def main():
-    db = sqlite3.connect(str(DB_PATH))
+    parser = argparse.ArgumentParser(description="Initialize graph schema/seed data in facts.db")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
+    args = parser.parse_args()
+
+    db_path = resolve_db_path(args.db_path)
+    if not db_path.exists():
+        print(f"[graph-init] error: facts.db not found at {db_path}", file=sys.stderr)
+        sys.exit(2)
+
+    db = sqlite3.connect(str(db_path))
     db.execute("PRAGMA journal_mode=WAL")
     
-    print(f"📦 Database: {DB_PATH}")
+    print(f"📦 Database: {db_path}")
     print(f"   Existing facts: {db.execute('SELECT COUNT(*) FROM facts').fetchone()[0]}")
     print()
     
