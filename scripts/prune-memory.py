@@ -21,9 +21,46 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-WORKSPACE = os.environ.get("WORKSPACE", "/path/to/workspace")
-MEMORY_DIR = os.path.join(WORKSPACE, "memory")
-MEMORY_MD = os.path.join(WORKSPACE, "MEMORY.md")
+WORKSPACE = None
+MEMORY_DIR = None
+MEMORY_MD = None
+
+
+def resolve_workspace_dir(cli_workspace=None):
+    """Resolve workspace using --workspace, OPENCLAW_WORKSPACE, then cwd."""
+    if cli_workspace:
+        return Path(cli_workspace).expanduser().resolve()
+
+    env_workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if env_workspace:
+        return Path(env_workspace).expanduser().resolve()
+
+    return Path.cwd()
+
+
+def configure_paths(cli_workspace=None):
+    """Configure and validate runtime paths."""
+    workspace = resolve_workspace_dir(cli_workspace)
+    memory_dir = workspace / "memory"
+    memory_md = workspace / "MEMORY.md"
+
+    if not workspace.exists():
+        print(
+            f"❌ Workspace directory does not exist: {workspace}\n"
+            "   Provide --workspace <path> or set OPENCLAW_WORKSPACE to a valid workspace.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not memory_dir.exists():
+        print(
+            f"❌ Memory directory not found: {memory_dir}\n"
+            "   Expected <workspace>/memory. Create it or pass --workspace with the correct root.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return workspace, str(memory_dir), str(memory_md)
 
 # Retention periods
 CONTEXTUAL_DAYS = 7    # i < 0.4: auto-prune after 7 days
@@ -99,17 +136,16 @@ def prune_file(filepath, file_date, today, dry_run=False):
     return kept, pruned, promoted
 
 
-def run(dry_run=False):
+def run(dry_run=False, workspace=None):
     """Main pruning loop."""
+    global WORKSPACE, MEMORY_DIR, MEMORY_MD
+    WORKSPACE, MEMORY_DIR, MEMORY_MD = configure_paths(workspace)
+
     today = datetime.now(timezone.utc).date()
     total_pruned = 0
     total_promoted = 0
     files_modified = 0
     all_promoted = []
-
-    if not os.path.isdir(MEMORY_DIR):
-        print("No memory directory found")
-        return
 
     for filename in sorted(os.listdir(MEMORY_DIR)):
         file_date = parse_date_from_filename(filename)
@@ -147,5 +183,6 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Importance-based memory pruner')
     parser.add_argument('--dry-run', action='store_true', help='Preview without modifying')
+    parser.add_argument('--workspace', type=str, help='Workspace root (defaults: --workspace, OPENCLAW_WORKSPACE, cwd)')
     args = parser.parse_args()
-    run(dry_run=args.dry_run)
+    run(dry_run=args.dry_run, workspace=args.workspace)

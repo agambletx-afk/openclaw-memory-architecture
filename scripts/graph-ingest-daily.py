@@ -21,11 +21,57 @@ import re
 import sys
 import argparse
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 
-DB_PATH = Path("/path/to/workspace/memory/facts.db")
-MEMORY_DIR = Path("/path/to/workspace/memory")
+DB_PATH: Path | None = None
+MEMORY_DIR: Path | None = None
+
+
+def resolve_workspace_dir(cli_workspace: str | None = None) -> Path:
+    """Resolve workspace path from CLI arg, env var, then current working directory."""
+    if cli_workspace:
+        return Path(cli_workspace).expanduser().resolve()
+
+    env_workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if env_workspace:
+        return Path(env_workspace).expanduser().resolve()
+
+    return Path.cwd()
+
+
+def resolve_paths(cli_workspace: str | None = None) -> tuple[Path, Path, Path]:
+    """Resolve workspace, DB, and memory directory paths."""
+    workspace_dir = resolve_workspace_dir(cli_workspace)
+    db_path = workspace_dir / "memory" / "facts.db"
+    memory_dir = workspace_dir / "memory"
+    return workspace_dir, db_path, memory_dir
+
+
+def validate_paths(workspace_dir: Path, db_path: Path, memory_dir: Path):
+    """Validate resolved runtime paths with actionable errors."""
+    if not workspace_dir.exists():
+        print(
+            f"❌ Workspace directory does not exist: {workspace_dir}\n"
+            "   Provide --workspace <path> or set OPENCLAW_WORKSPACE to a valid workspace.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not memory_dir.exists():
+        print(
+            f"❌ Memory directory not found: {memory_dir}\n"
+            "   Expected <workspace>/memory. Create it or pass --workspace with the correct root.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not db_path.exists():
+        print(
+            f"❌ facts.db not found: {db_path}\n"
+            "   Initialize it first (e.g., python3 scripts/init-facts-db.py) or set --workspace/OPENCLAW_WORKSPACE correctly.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 # ─── Pattern definitions ───────────────────────────────────────────
 
@@ -606,8 +652,16 @@ def main():
     parser.add_argument("--file", type=str, help="Process a specific file")
     parser.add_argument("--stats", action="store_true", help="Show graph statistics")
     parser.add_argument("--all", action="store_true", help="Process ALL unindexed files (not just daily)")
+    parser.add_argument("--workspace", type=str, help="Workspace root (defaults: --workspace, OPENCLAW_WORKSPACE, cwd)")
     args = parser.parse_args()
-    
+
+    workspace_dir, db_path, memory_dir = resolve_paths(args.workspace)
+    validate_paths(workspace_dir, db_path, memory_dir)
+
+    global DB_PATH, MEMORY_DIR
+    DB_PATH = db_path
+    MEMORY_DIR = memory_dir
+
     db = sqlite3.connect(str(DB_PATH))
     db.execute("PRAGMA journal_mode=WAL")
     
@@ -622,9 +676,9 @@ def main():
     before_aliases = db.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
     
     if args.file:
-        filepath = Path(args.file)
+        filepath = Path(args.file).expanduser()
         if not filepath.is_absolute():
-            filepath = Path("/path/to/workspace") / filepath
+            filepath = workspace_dir / filepath
         if not filepath.exists():
             print(f"❌ File not found: {filepath}")
             sys.exit(1)
