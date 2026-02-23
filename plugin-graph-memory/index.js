@@ -20,6 +20,7 @@
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -39,6 +40,7 @@ const DEFAULTS = {
     cacheTTL: 60000,          // Cache TTL in ms (60 seconds)
     showEmptyResults: false,  // Set to true to show "[GRAPH MEMORY] No matching entities found"
     telemetryPath: "/tmp/openclaw/memory-telemetry.jsonl",
+    debug: false,             // Set true for redacted diagnostics
 };
 
 // Simple LRU cache for query results
@@ -312,9 +314,9 @@ module.exports = {
                 const userText = _extractText(lastUser);
                 if (!userText || userText.length < 5) return { prependContext: '' };
 
-                const cleanText = _stripContextBlocks(userText).trim();
+                const cleanText = _stripContextBlocks(userText, config.debug).trim();
                 if (!cleanText || cleanText.length < 5) {
-                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText?.substring(0, 50) || '(empty)', resultCount: 0, injected: false, reason: 'too-short', rawLen: userText?.length || 0 });
+                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', queryFingerprint: _fingerprintText(cleanText), resultCount: 0, injected: false, reason: 'too-short', rawLen: userText?.length || 0 });
                     return { prependContext: '' };
                 }
 
@@ -334,7 +336,7 @@ module.exports = {
                 }
 
                 if (!results || results.length === 0) {
-                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, injected: false });
+                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', queryFingerprint: _fingerprintText(cleanText), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, injected: false });
                     if (config.showEmptyResults) {
                         return { prependContext: '[GRAPH MEMORY] No matching entities found.' };
                     }
@@ -349,7 +351,7 @@ module.exports = {
                     ? [...entityMatched, ...ftsOnly]
                     : [];
                 if (filtered.length === 0) {
-                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: cleanText.substring(0, 200), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, entityMatched: 0, ftsOnly: ftsOnly.length, injected: false, reason: 'no-entity-match' });
+                    writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', queryFingerprint: _fingerprintText(cleanText), latencyMs: Date.now() - event._graphSearchStart, resultCount: 0, entityMatched: 0, ftsOnly: ftsOnly.length, injected: false, reason: 'no-entity-match' });
                     if (config.showEmptyResults) {
                         return { prependContext: '[GRAPH MEMORY] No high-confidence entity matches (score < 65).' };
                     }
@@ -452,7 +454,7 @@ module.exports = {
                     const telemetry = {
                         timestamp: new Date().toISOString(),
                         system: 'graph-memory',
-                        query: cleanText.substring(0, 200),
+                        queryFingerprint: _fingerprintText(cleanText),
                         latencyMs: Date.now() - (event._graphSearchStart || Date.now()),
                         resultCount: topResults.length,
                         coOccurring: coOccurring.length,
@@ -470,7 +472,7 @@ module.exports = {
 
             } catch (err) {
                 console.error(`[graph-memory] before_agent_start failed: ${err.message}`);
-                writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', query: '(error)', resultCount: 0, injected: false, error: err.message.substring(0, 200) });
+                writeTelemetry({ timestamp: new Date().toISOString(), system: 'graph-memory', queryFingerprint: 'error', resultCount: 0, injected: false, error: err.message.substring(0, 200) });
                 return { prependContext: '' };
             }
         }, { priority: 5 });
@@ -502,12 +504,13 @@ function _extractText(message) {
     return '';
 }
 
-function _stripContextBlocks(text) {
+function _stripContextBlocks(text, debug = false) {
     // Strategy: find the last metadata/context marker, take everything after it as user text.
     // Markers: ```\n (end of JSON block), "Speak from this memory naturally.", System: lines
     
-    // DEBUG: Log raw input
-    console.log(`[graph-memory:strip] RAW INPUT (${text.length} chars): "${text.substring(0, 100)}..."`);
+    if (debug) {
+        console.log(`[graph-memory:strip] RAW INPUT ${_fingerprintText(text)}`);
+    }
     
     let result = text;
     
@@ -536,8 +539,10 @@ function _stripContextBlocks(text) {
             .replace(/^\[CONTINUITY CONTEXT\][\s\S]*?(?=\n\n)/gm, '')
             .replace(/^\[GRAPH MEMORY\][\s\S]*?(?=\n\n)/gm, '')
             .trim();
-        console.log(`[graph-memory:strip] After fence clean: "${cleaned.substring(0, 100)}..." (${cleaned.length} chars)`);
-        console.log(`[graph-memory] strip: afterFence="${afterFence.substring(0, 80)}" cleaned="${cleaned.substring(0, 80)}" len=${cleaned.length}`);
+        if (debug) {
+            console.log(`[graph-memory:strip] After fence clean ${_fingerprintText(cleaned)}`);
+            console.log(`[graph-memory:strip] After fence tail ${_fingerprintText(afterFence)}`);
+        }
         if (cleaned.length >= 3) {
             return cleaned;
         }
@@ -558,6 +563,14 @@ function _stripContextBlocks(text) {
         .trim();
     
     return result;
+}
+
+
+
+function _fingerprintText(text) {
+    const normalized = typeof text === 'string' ? text : '';
+    const digest = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 12);
+    return `len=${normalized.length} sha256=${digest}`;
 }
 
 function _runGraphSearch(scriptPath, query, config) {
