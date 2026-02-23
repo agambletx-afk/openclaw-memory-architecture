@@ -15,6 +15,8 @@ import argparse
 import os
 import json
 
+from fts_helper import build_or_match_query
+
 DB_PATH = os.environ.get("FACTS_DB", "memory/facts.db")
 
 def main():
@@ -67,10 +69,14 @@ def main():
     elif args.category:
         rows = db.execute("SELECT * FROM facts WHERE category=?", (args.category,)).fetchall()
     elif args.query:
-        rows = db.execute(
-            "SELECT f.* FROM facts_fts fts JOIN facts f ON f.id = fts.rowid WHERE facts_fts MATCH ? ORDER BY fts.rank",
-            (args.query,)
-        ).fetchall()
+        fts_query = build_or_match_query(args.query, min_len=1)
+        if not fts_query:
+            rows = []
+        else:
+            rows = db.execute(
+                "SELECT f.* FROM facts_fts fts JOIN facts f ON f.id = fts.rowid WHERE facts_fts MATCH ? ORDER BY fts.rank",
+                (fts_query,)
+            ).fetchall()
     else:
         parser.print_help()
         return
