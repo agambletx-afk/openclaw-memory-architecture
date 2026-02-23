@@ -162,7 +162,7 @@ def extract_intent(query: str) -> list[str]:
         "birthday": ["birthday", "born", "birth", "birthdate", "when was .* born"],
         "phone": ["phone", "number", "call", "contact", "reach"],
         "email": ["email", "mail", "address.*@", "contact"],
-        "address": ["address", "live", "lives", "where does .* live", "location"],
+        "address": ["address", "live", "lives", "where does .* live", "where .* lives", "location"],
         "birthplace": ["birthplace", "born in", "where was .* born", "from", "origin"],
         "relationship": ["who is", "relationship", "partner", "wife", "husband", "girlfriend"],
         "url": ["url", "website", "domain", "site"],

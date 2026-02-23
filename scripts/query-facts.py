@@ -14,14 +14,29 @@ import sqlite3
 import argparse
 import os
 import json
+from pathlib import Path
 
 from fts_helper import build_or_match_query
 
-DB_PATH = os.environ.get("FACTS_DB", "memory/facts.db")
+DEFAULT_LEGACY_DB_PATH = Path("memory/facts.db")
+
+
+def resolve_db_path(cli_db_path: str | None = None) -> Path:
+    """Resolve facts.db path from CLI, FACTS_DB env var, then legacy fallback."""
+    if cli_db_path:
+        return Path(cli_db_path).expanduser()
+
+    env_db_path = os.environ.get("FACTS_DB")
+    if env_db_path:
+        return Path(env_db_path).expanduser()
+
+    return DEFAULT_LEGACY_DB_PATH
+
 
 def main():
     parser = argparse.ArgumentParser(description="Query facts.db")
     parser.add_argument("query", nargs="?", help="Full-text search query")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides FACTS_DB env var)")
     parser.add_argument("--entity", help="Filter by entity")
     parser.add_argument("--key", help="Filter by key (requires --entity)")
     parser.add_argument("--category", help="Filter by category")
@@ -29,11 +44,12 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args()
 
-    if not os.path.exists(DB_PATH):
-        print(f"❌ {DB_PATH} not found. Run init-facts-db.py first.")
+    db_path = resolve_db_path(args.db_path)
+    if not db_path.exists():
+        print(f"❌ {db_path} not found. Run init-facts-db.py first.")
         return
 
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(str(db_path))
     db.row_factory = sqlite3.Row
 
     if args.stats:
@@ -92,6 +108,7 @@ def main():
             print(f"  {row['entity']}.{row['key']} = {row['value']}{perm}")
 
     db.close()
+
 
 if __name__ == "__main__":
     main()
