@@ -17,6 +17,8 @@ import argparse
 import os
 from pathlib import Path
 
+from fts_helper import build_or_match_query
+
 DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
 DEBUG = False
 DEFAULT_LEGACY_DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
@@ -273,9 +275,8 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
         stop_words = {"what", "is", "the", "a", "an", "of", "in", "on", "at", "to", "for",
                       "how", "when", "where", "who", "which", "does", "do", "did", "has",
                       "have", "about", "with", "my", "your", "this", "that", "are", "was"}
-        words = [w for w in re.findall(r'\w+', query.lower()) if w not in stop_words and len(w) > 1]
-        if words:
-            fts_query = " OR ".join(words)
+        fts_query = build_or_match_query(query, stop_words=stop_words, min_len=2)
+        if fts_query:
             try:
                 rows = db.execute(
                     "SELECT entity, key, value FROM facts_fts WHERE facts_fts MATCH ?",
@@ -302,11 +303,13 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
     
     # Phase 4: FTS on relations
     if len(results) < top_k:
-        words = [w for w in re.findall(r'\w+', query.lower()) 
-                 if w not in {"what", "is", "the", "a", "an", "of", "in", "on", "at", "to", "for",
-                              "how", "when", "where", "who", "which", "does", "do"} and len(w) > 1]
-        if words:
-            fts_query = " OR ".join(words)
+        fts_query = build_or_match_query(
+            query,
+            stop_words={"what", "is", "the", "a", "an", "of", "in", "on", "at", "to", "for",
+                        "how", "when", "where", "who", "which", "does", "do"},
+            min_len=2,
+        )
+        if fts_query:
             try:
                 rows = db.execute(
                     "SELECT subject, predicate, object FROM relations_fts WHERE relations_fts MATCH ?",
