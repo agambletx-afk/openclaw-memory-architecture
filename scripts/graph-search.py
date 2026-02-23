@@ -14,9 +14,37 @@ import json
 import re
 import sys
 import argparse
+import os
 from pathlib import Path
 
-DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
+DEFAULT_LEGACY_DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
+DB_PATH = DEFAULT_LEGACY_DB_PATH
+
+
+def resolve_db_path(cli_db_path: str | None = None) -> Path:
+    """Resolve facts.db path using CLI arg, workspace env, then legacy fallback."""
+    if cli_db_path:
+        return Path(cli_db_path).expanduser()
+
+    workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if workspace:
+        return Path(workspace).expanduser() / "memory" / "facts.db"
+
+    cwd_candidate = Path.cwd() / "memory" / "facts.db"
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    print(
+        f"[graph-search] warning: using legacy facts.db path {DEFAULT_LEGACY_DB_PATH}. "
+        "Set OPENCLAW_WORKSPACE or --db-path for portability.",
+        file=sys.stderr,
+    )
+    return DEFAULT_LEGACY_DB_PATH
+
+
+def set_db_path(db_path: Path):
+    global DB_PATH
+    DB_PATH = db_path
 
 
 def resolve_entity(db: sqlite3.Connection, name: str) -> str | None:
@@ -308,9 +336,16 @@ def main():
     parser.add_argument("query", help="Search query")
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--top-k", "-k", type=int, default=6)
+    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
     args = parser.parse_args()
-    
-    db = sqlite3.connect(str(DB_PATH))
+
+    db_path = resolve_db_path(args.db_path)
+    set_db_path(db_path)
+    if not db_path.exists():
+        print(f"[graph-search] error: facts.db not found at {db_path}", file=sys.stderr)
+        sys.exit(2)
+
+    db = sqlite3.connect(str(db_path))
     results = graph_search(args.query, db, args.top_k)
     db.close()
     
