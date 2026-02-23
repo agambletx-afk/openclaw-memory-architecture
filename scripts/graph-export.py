@@ -3,14 +3,58 @@
 
 import sqlite3
 import json
+import os
+import sys
+import argparse
 from pathlib import Path
 from collections import defaultdict
 
-DB_PATH = Path("/path/to/workspace/memory/facts.db")
-OUT_PATH = Path("/path/to/workspace/memory/graph-data.json")
+DEFAULT_LEGACY_DB_PATH = Path("/path/to/workspace/memory/facts.db")
+DEFAULT_LEGACY_OUT_PATH = Path("/path/to/workspace/memory/graph-data.json")
+
+
+def resolve_workspace_path(cli_workspace: str | None = None) -> Path:
+    if cli_workspace:
+        return Path(cli_workspace).expanduser()
+    workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if workspace:
+        return Path(workspace).expanduser()
+    return Path.cwd()
+
+
+def resolve_paths(cli_db_path: str | None = None, cli_out_path: str | None = None, cli_workspace: str | None = None) -> tuple[Path, Path]:
+    workspace = resolve_workspace_path(cli_workspace)
+
+    if cli_db_path:
+        db_path = Path(cli_db_path).expanduser()
+    else:
+        db_candidate = workspace / "memory" / "facts.db"
+        db_path = db_candidate if (db_candidate.exists() or workspace != Path.cwd()) else DEFAULT_LEGACY_DB_PATH
+
+    if cli_out_path:
+        out_path = Path(cli_out_path).expanduser()
+    else:
+        out_path = (workspace / "memory" / "graph-data.json") if workspace != Path.cwd() else (db_path.parent / "graph-data.json" if db_path != DEFAULT_LEGACY_DB_PATH else DEFAULT_LEGACY_OUT_PATH)
+
+    return db_path, out_path
 
 def main():
-    db = sqlite3.connect(str(DB_PATH))
+    parser = argparse.ArgumentParser(description="Export knowledge graph to JSON")
+    parser.add_argument("--workspace", help="Workspace path (overrides OPENCLAW_WORKSPACE)")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides --workspace)")
+    parser.add_argument("--out-path", help="Path to output JSON file")
+    args = parser.parse_args()
+
+    db_path, out_path = resolve_paths(args.db_path, args.out_path, args.workspace)
+    if db_path == DEFAULT_LEGACY_DB_PATH and (not args.db_path and not args.workspace and not os.environ.get("OPENCLAW_WORKSPACE")):
+        print(f"[graph-export] warning: using legacy db path {DEFAULT_LEGACY_DB_PATH}", file=sys.stderr)
+    if not db_path.exists():
+        print(f"[graph-export] error: facts.db not found at {db_path}", file=sys.stderr)
+        sys.exit(2)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    db = sqlite3.connect(str(db_path))
     
     # Get all entities from facts + relations
     entities = set()
@@ -62,9 +106,9 @@ def main():
         }
     }
     
-    OUT_PATH.write_text(json.dumps(data, indent=2))
+    out_path.write_text(json.dumps(data, indent=2))
     print(f"✅ Exported: {len(nodes)} nodes, {len(edges)} edges, {sum(len(v) for v in facts.values())} facts")
-    print(f"   → {OUT_PATH}")
+    print(f"   → {out_path}")
     
     db.close()
 

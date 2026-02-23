@@ -26,7 +26,16 @@ from datetime import datetime
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-WORKSPACE = Path(os.environ.get("OPENCLAW_WORKSPACE", "/path/to/workspace"))
+WORKSPACE = None
+
+
+def resolve_workspace_path(cli_workspace: str | None = None) -> Path:
+    if cli_workspace:
+        return Path(cli_workspace).expanduser()
+    env_workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if env_workspace:
+        return Path(env_workspace).expanduser()
+    return Path.cwd()
 TOP_K_DEFAULT = 6  # Result passes if expected file appears in top K results
 
 # ─── Benchmark Queries ───────────────────────────────────────────────────────
@@ -114,7 +123,7 @@ QUERIES = [
 
 # ─── Memory Search via OpenClaw ──────────────────────────────────────────────
 
-def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd") -> list[dict]:
+def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", workspace: Path | None = None) -> list[dict]:
     """
     Search memory using QMD or OpenClaw CLI.
     Returns list of {path, score} dicts.
@@ -125,6 +134,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd") -
       - openclaw: openclaw memory search CLI (requires active session)
     """
     results = []
+    workspace = workspace or WORKSPACE or Path.cwd()
 
     if method in ("qmd", "vsearch"):
         search_cmd = "search" if method == "qmd" else "vsearch"
@@ -172,7 +182,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd") -
                        "MEMORY.md", "TOOLS.md"]
         query_lower = query.lower()
         for fname in root_files:
-            fpath = WORKSPACE / fname
+            fpath = workspace / fname
             if fpath.exists():
                 try:
                     content = fpath.read_text(errors="ignore").lower()
@@ -195,7 +205,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd") -
             result = subprocess.run(
                 ["openclaw", "memory", "search", "--json", "--max-results", str(top_k), query],
                 capture_output=True, text=True, timeout=30,
-                cwd=str(WORKSPACE)
+                cwd=str(workspace)
             )
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout.strip())
@@ -208,11 +218,11 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd") -
 
     elif method in ("graph", "hybrid"):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("graph_search", WORKSPACE / "scripts" / "graph-search.py")
+        spec = importlib.util.spec_from_file_location("graph_search", workspace / "scripts" / "graph-search.py")
         gs_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(gs_mod)
 
-        db = sqlite3.connect(str(WORKSPACE / "memory" / "facts.db"))
+        db = sqlite3.connect(str(workspace / "memory" / "facts.db"))
         graph_results = gs_mod.graph_search(query, db, top_k)
         db.close()
 
@@ -221,7 +231,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd") -
 
         if method == "hybrid":
             # Also run QMD BM25 and merge
-            qmd_results = search_memory(query, top_k, method="qmd")
+            qmd_results = search_memory(query, top_k, method="qmd", workspace=workspace)
             existing_paths = {r["path"].lower() for r in results}
             for qr in qmd_results:
                 if qr["path"].lower() not in existing_paths:
@@ -265,7 +275,11 @@ def main():
     parser.add_argument("--method", "-m", choices=["qmd", "vsearch", "openclaw", "graph", "hybrid"], default="qmd",
                         help="Search method (default: qmd). 'hybrid' = graph + qmd combined")
     parser.add_argument("--output", "-o", help="Save results to JSON file")
+    parser.add_argument("--workspace", "-w", help="Workspace path (overrides OPENCLAW_WORKSPACE)")
     args = parser.parse_args()
+
+    global WORKSPACE
+    WORKSPACE = resolve_workspace_path(args.workspace)
 
     categories = {}
     total_pass = 0
@@ -282,6 +296,7 @@ def main():
             sys.exit(1)
 
     print(f"╔══════════════════════════════════════════════════════════════╗")
+    print(f"║  Workspace: {str(WORKSPACE):50.50s} ║")
     print(f"║  Memory Search Benchmark — {len(queries)} queries, top-{args.top_k}             ║")
     print(f"║  Method: {args.method:52s} ║")
     print(f"║  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}                                    ║")
@@ -289,7 +304,7 @@ def main():
     print()
 
     for i, (query, expected, category) in enumerate(queries, 1):
-        results = search_memory(query, args.top_k, method=args.method)
+        results = search_memory(query, args.top_k, method=args.method, workspace=WORKSPACE)
         hit = check_hit(results, expected) if results else False
         paths = get_result_paths(results)
 
