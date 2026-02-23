@@ -17,31 +17,28 @@ import argparse
 import os
 from pathlib import Path
 
+DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
+DEBUG = False
 DEFAULT_LEGACY_DB_PATH = Path("/home/coolmann/.openclaw/data/facts.db")
 DB_PATH = DEFAULT_LEGACY_DB_PATH
 
 
-def resolve_workspace_path(cli_workspace: str | None = None) -> Path:
-    if cli_workspace:
-        return Path(cli_workspace).expanduser()
-    workspace = os.environ.get("OPENCLAW_WORKSPACE")
-    if workspace:
-        return Path(workspace).expanduser()
-    return Path.cwd()
-
-
-def resolve_db_path(cli_db_path: str | None = None, cli_workspace: str | None = None) -> Path:
+def resolve_db_path(cli_db_path: str | None = None) -> Path:
+    """Resolve facts.db path using CLI arg, workspace env, then legacy fallback."""
     if cli_db_path:
         return Path(cli_db_path).expanduser()
-    workspace = resolve_workspace_path(cli_workspace)
-    candidate = workspace / "memory" / "facts.db"
-    if candidate.exists():
-        return candidate
-    if workspace != Path.cwd():
-        return candidate
+
+    workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if workspace:
+        return Path(workspace).expanduser() / "memory" / "facts.db"
+
+    cwd_candidate = Path.cwd() / "memory" / "facts.db"
+    if cwd_candidate.exists():
+        return cwd_candidate
+
     print(
         f"[graph-search] warning: using legacy facts.db path {DEFAULT_LEGACY_DB_PATH}. "
-        "Set --workspace/OPENCLAW_WORKSPACE or --db-path for portability.",
+        "Set OPENCLAW_WORKSPACE or --db-path for portability.",
         file=sys.stderr,
     )
     return DEFAULT_LEGACY_DB_PATH
@@ -148,8 +145,9 @@ def extract_entity_candidates(query: str) -> list[str]:
                     pattern = r'\b' + re.escape(alias_lower) + r'\b'
                     if re.search(pattern, query_lower) and alias not in candidates:
                         candidates.append(alias)
-    except Exception:
-        pass
+    except (sqlite3.Error, OSError) as exc:
+        if DEBUG:
+            print(f"[graph-search] alias scan failed: {exc}", file=sys.stderr)
     
     return candidates
 
@@ -298,8 +296,9 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
                             "entity": entity,
                             "method": "fts"
                         })
-            except Exception:
-                pass
+            except sqlite3.Error as exc:
+                if DEBUG:
+                    print(f"[graph-search] facts FTS failed: {exc}", file=sys.stderr)
     
     # Phase 4: FTS on relations
     if len(results) < top_k:
@@ -328,8 +327,9 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
                             "entity": subj,
                             "method": "fts_rel"
                         })
-            except Exception:
-                pass
+            except sqlite3.Error as exc:
+                if DEBUG:
+                    print(f"[graph-search] relations FTS failed: {exc}", file=sys.stderr)
     
     # Sort by score, return top-K
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -341,11 +341,14 @@ def main():
     parser.add_argument("query", help="Search query")
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--top-k", "-k", type=int, default=6)
-    parser.add_argument("--workspace", help="Workspace path (overrides OPENCLAW_WORKSPACE)")
-    parser.add_argument("--db-path", help="Path to facts.db (overrides --workspace)")
+    parser.add_argument("--debug", action="store_true", help="Show backend/database errors")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
     args = parser.parse_args()
 
-    db_path = resolve_db_path(args.db_path, args.workspace)
+    global DEBUG
+    DEBUG = args.debug
+
+    db_path = resolve_db_path(args.db_path)
     set_db_path(db_path)
     if not db_path.exists():
         print(f"[graph-search] error: facts.db not found at {db_path}", file=sys.stderr)

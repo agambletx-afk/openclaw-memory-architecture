@@ -18,25 +18,22 @@ from pathlib import Path
 DEFAULT_LEGACY_DB_PATH = Path("/path/to/workspace/memory/facts.db")
 
 
-def resolve_workspace_path(cli_workspace: str | None = None) -> Path:
-    if cli_workspace:
-        return Path(cli_workspace).expanduser()
-    workspace = os.environ.get("OPENCLAW_WORKSPACE")
-    if workspace:
-        return Path(workspace).expanduser()
-    return Path.cwd()
-
-
-def resolve_db_path(cli_db_path: str | None = None, cli_workspace: str | None = None) -> Path:
+def resolve_db_path(cli_db_path: str | None = None) -> Path:
+    """Resolve facts.db path from CLI, OPENCLAW_WORKSPACE, CWD, then legacy fallback."""
     if cli_db_path:
         return Path(cli_db_path).expanduser()
-    workspace = resolve_workspace_path(cli_workspace)
-    candidate = workspace / "memory" / "facts.db"
-    if candidate.exists() or workspace != Path.cwd():
-        return candidate
+
+    workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if workspace:
+        return Path(workspace).expanduser() / "memory" / "facts.db"
+
+    cwd_candidate = Path.cwd() / "memory" / "facts.db"
+    if cwd_candidate.exists():
+        return cwd_candidate
+
     print(
         f"[graph-init] warning: using legacy facts.db path {DEFAULT_LEGACY_DB_PATH}. "
-        "Set --workspace/OPENCLAW_WORKSPACE or --db-path for portability.",
+        "Set OPENCLAW_WORKSPACE or --db-path for portability.",
         file=sys.stderr,
     )
     return DEFAULT_LEGACY_DB_PATH
@@ -379,11 +376,10 @@ def resolve_entity(db: sqlite3.Connection, name: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Initialize graph schema/seed data in facts.db")
-    parser.add_argument("--workspace", help="Workspace path (overrides OPENCLAW_WORKSPACE)")
-    parser.add_argument("--db-path", help="Path to facts.db (overrides --workspace)")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
     args = parser.parse_args()
 
-    db_path = resolve_db_path(args.db_path, args.workspace)
+    db_path = resolve_db_path(args.db_path)
     if not db_path.exists():
         print(f"[graph-init] error: facts.db not found at {db_path}", file=sys.stderr)
         sys.exit(2)

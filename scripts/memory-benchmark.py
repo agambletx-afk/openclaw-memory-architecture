@@ -123,7 +123,7 @@ QUERIES = [
 
 # ─── Memory Search via OpenClaw ──────────────────────────────────────────────
 
-def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", workspace: Path | None = None) -> list[dict]:
+def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", debug: bool = False, backend_errors: list[str] | None = None) -> list[dict]:
     """
     Search memory using QMD or OpenClaw CLI.
     Returns list of {path, score} dicts.
@@ -165,15 +165,20 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", w
                                 try:
                                     score = int(score_str)
                                 except ValueError:
-                                    pass
+                                    if debug:
+                                        print(f"[benchmark:{method}] unable to parse score '{score_str}' for query={query!r}", file=sys.stderr)
                         # Map collection back to filesystem path
                         if collection == "memory-root":
                             full_path = f"{path_part}"
                         else:
                             full_path = f"memory/{path_part}"
                         results.append({"path": full_path, "score": score})
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
+            except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+                msg = f"{method}:{collection}:{type(exc).__name__}"
+                if backend_errors is not None:
+                    backend_errors.append(msg)
+                if debug:
+                    print(f"[benchmark:{method}] backend error for collection={collection}: {exc}", file=sys.stderr)
 
         # Also search workspace root files (SOUL.md, USER.md, etc.)
         # These are in memory-root collection but let's also do a direct grep fallback
@@ -193,8 +198,9 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", w
                         # Check if already in results
                         if not any(fname.lower() in r["path"].lower() for r in results):
                             results.append({"path": fname, "score": matches * 10})
-                except Exception:
-                    pass
+                except (OSError, UnicodeError) as exc:
+                    if debug:
+                        print(f"[benchmark:{method}] root file read failed for {fpath}: {exc}", file=sys.stderr)
 
         # Sort by score descending, return top-K
         results.sort(key=lambda r: r.get("score", 0), reverse=True)
@@ -213,8 +219,11 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", w
                     return data["results"]
                 elif isinstance(data, list):
                     return data
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-            pass
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as exc:
+            if backend_errors is not None:
+                backend_errors.append(f"openclaw:{type(exc).__name__}")
+            if debug:
+                print(f"[benchmark:openclaw] backend error: {exc}", file=sys.stderr)
 
     elif method in ("graph", "hybrid"):
         import importlib.util
@@ -231,7 +240,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", w
 
         if method == "hybrid":
             # Also run QMD BM25 and merge
-            qmd_results = search_memory(query, top_k, method="qmd", workspace=workspace)
+            qmd_results = search_memory(query, top_k, method="qmd", debug=debug, backend_errors=backend_errors)
             existing_paths = {r["path"].lower() for r in results}
             for qr in qmd_results:
                 if qr["path"].lower() not in existing_paths:
@@ -275,7 +284,7 @@ def main():
     parser.add_argument("--method", "-m", choices=["qmd", "vsearch", "openclaw", "graph", "hybrid"], default="qmd",
                         help="Search method (default: qmd). 'hybrid' = graph + qmd combined")
     parser.add_argument("--output", "-o", help="Save results to JSON file")
-    parser.add_argument("--workspace", "-w", help="Workspace path (overrides OPENCLAW_WORKSPACE)")
+    parser.add_argument("--debug", action="store_true", help="Show backend/parsing errors")
     args = parser.parse_args()
 
     global WORKSPACE
@@ -286,6 +295,7 @@ def main():
     total_fail = 0
     total_error = 0
     results_log = []
+    backend_errors: list[str] = []
 
     queries = QUERIES
     if args.category:
@@ -304,7 +314,7 @@ def main():
     print()
 
     for i, (query, expected, category) in enumerate(queries, 1):
-        results = search_memory(query, args.top_k, method=args.method, workspace=WORKSPACE)
+        results = search_memory(query, args.top_k, method=args.method, debug=args.debug, backend_errors=backend_errors)
         hit = check_hit(results, expected) if results else False
         paths = get_result_paths(results)
 
@@ -368,6 +378,15 @@ def main():
     if total_error > 0:
         print(f"\n  ⚠️  {total_error} queries returned no results (search backend issue?)")
 
+    if backend_errors:
+        print(f"  ⚠️  Backend errors observed: {len(backend_errors)}")
+        if args.debug:
+            unique = sorted(set(backend_errors))
+            for err in unique[:10]:
+                print(f"     • {err}")
+            if len(unique) > 10:
+                print(f"     • ... and {len(unique) - 10} more")
+
     # ── Failed queries ───────────────────────────────────────────────────
     failures = [r for r in results_log if not r["hit"] and r["results_count"] > 0]
     if failures and not args.verbose:
@@ -387,9 +406,11 @@ def main():
                 "fail": total_fail,
                 "error": total_error,
                 "recall_pct": round(pct, 1),
+                "backend_errors": len(backend_errors),
             },
             "categories": categories,
             "queries": results_log,
+            "backend_errors": backend_errors,
         }
         Path(args.output).write_text(json.dumps(out, indent=2))
         print(f"\n  📄 Results saved to {args.output}")

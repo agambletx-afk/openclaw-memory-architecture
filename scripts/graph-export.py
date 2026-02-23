@@ -13,41 +13,51 @@ DEFAULT_LEGACY_DB_PATH = Path("/path/to/workspace/memory/facts.db")
 DEFAULT_LEGACY_OUT_PATH = Path("/path/to/workspace/memory/graph-data.json")
 
 
-def resolve_workspace_path(cli_workspace: str | None = None) -> Path:
-    if cli_workspace:
-        return Path(cli_workspace).expanduser()
-    workspace = os.environ.get("OPENCLAW_WORKSPACE")
-    if workspace:
-        return Path(workspace).expanduser()
-    return Path.cwd()
-
-
-def resolve_paths(cli_db_path: str | None = None, cli_out_path: str | None = None, cli_workspace: str | None = None) -> tuple[Path, Path]:
-    workspace = resolve_workspace_path(cli_workspace)
-
+def resolve_paths(cli_db_path: str | None = None, cli_out_path: str | None = None) -> tuple[Path, Path]:
+    """Resolve DB and output paths from CLI, OPENCLAW_WORKSPACE, CWD, then legacy fallback."""
     if cli_db_path:
         db_path = Path(cli_db_path).expanduser()
     else:
-        db_candidate = workspace / "memory" / "facts.db"
-        db_path = db_candidate if (db_candidate.exists() or workspace != Path.cwd()) else DEFAULT_LEGACY_DB_PATH
+        workspace = os.environ.get("OPENCLAW_WORKSPACE")
+        if workspace:
+            db_path = Path(workspace).expanduser() / "memory" / "facts.db"
+        else:
+            cwd_candidate = Path.cwd() / "memory" / "facts.db"
+            db_path = cwd_candidate if cwd_candidate.exists() else DEFAULT_LEGACY_DB_PATH
 
     if cli_out_path:
         out_path = Path(cli_out_path).expanduser()
     else:
-        out_path = (workspace / "memory" / "graph-data.json") if workspace != Path.cwd() else (db_path.parent / "graph-data.json" if db_path != DEFAULT_LEGACY_DB_PATH else DEFAULT_LEGACY_OUT_PATH)
+        if db_path != DEFAULT_LEGACY_DB_PATH and db_path.parent.exists():
+            out_path = db_path.parent / "graph-data.json"
+        else:
+            workspace = os.environ.get("OPENCLAW_WORKSPACE")
+            if workspace:
+                out_path = Path(workspace).expanduser() / "memory" / "graph-data.json"
+            else:
+                out_path = DEFAULT_LEGACY_OUT_PATH
 
     return db_path, out_path
 
 def main():
     parser = argparse.ArgumentParser(description="Export knowledge graph to JSON")
-    parser.add_argument("--workspace", help="Workspace path (overrides OPENCLAW_WORKSPACE)")
-    parser.add_argument("--db-path", help="Path to facts.db (overrides --workspace)")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
     parser.add_argument("--out-path", help="Path to output JSON file")
     args = parser.parse_args()
 
-    db_path, out_path = resolve_paths(args.db_path, args.out_path, args.workspace)
-    if db_path == DEFAULT_LEGACY_DB_PATH and (not args.db_path and not args.workspace and not os.environ.get("OPENCLAW_WORKSPACE")):
-        print(f"[graph-export] warning: using legacy db path {DEFAULT_LEGACY_DB_PATH}", file=sys.stderr)
+    db_path, out_path = resolve_paths(args.db_path, args.out_path)
+    if db_path == DEFAULT_LEGACY_DB_PATH and not os.environ.get("OPENCLAW_WORKSPACE") and not args.db_path:
+        print(
+            f"[graph-export] warning: using legacy db path {DEFAULT_LEGACY_DB_PATH}. "
+            "Set OPENCLAW_WORKSPACE or --db-path for portability.",
+            file=sys.stderr,
+        )
+    if out_path == DEFAULT_LEGACY_OUT_PATH and not os.environ.get("OPENCLAW_WORKSPACE") and not args.out_path:
+        print(
+            f"[graph-export] warning: using legacy output path {DEFAULT_LEGACY_OUT_PATH}. "
+            "Set OPENCLAW_WORKSPACE or --out-path for portability.",
+            file=sys.stderr,
+        )
     if not db_path.exists():
         print(f"[graph-export] error: facts.db not found at {db_path}", file=sys.stderr)
         sys.exit(2)
