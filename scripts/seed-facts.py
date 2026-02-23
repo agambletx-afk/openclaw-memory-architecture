@@ -7,6 +7,7 @@ Edit the FACTS list below with your own data, then run:
 
 import sqlite3
 import os
+import argparse
 
 DB_PATH = os.environ.get("FACTS_DB", "memory/facts.db")
 
@@ -39,7 +40,17 @@ FACTS = [
     # ("convention", "always check timezone before stating time", "Run TZ command, never do mental math", "convention", "AGENTS.md", 1),
 ]
 
-def seed():
+def parse_args():
+    parser = argparse.ArgumentParser(description="Seed facts into facts.db")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned inserts and estimates, then rollback instead of committing.",
+    )
+    return parser.parse_args()
+
+
+def seed(dry_run: bool = False):
     if not os.path.exists(DB_PATH):
         print(f"❌ {DB_PATH} not found. Run init-facts-db.py first.")
         return
@@ -52,6 +63,7 @@ def seed():
 
     inserted = 0
     skipped = 0
+    planned_inserts = []
     for entity, key, value, category, source, permanent in FACTS:
         # Check for duplicates
         existing = db.execute(
@@ -61,16 +73,35 @@ def seed():
         if existing:
             skipped += 1
             continue
+        planned_inserts.append((entity, key, category, source, permanent))
         db.execute(
             "INSERT INTO facts (entity, key, value, category, source, permanent) VALUES (?, ?, ?, ?, ?, ?)",
             (entity, key, value, category, source, permanent)
         )
         inserted += 1
 
-    db.commit()
-    total = db.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
-    print(f"✅ Seeded {inserted} facts ({skipped} duplicates skipped). Total: {total}")
+    total_before = db.execute("SELECT COUNT(*) FROM facts").fetchone()[0] - inserted
+    total_after_estimate = total_before + inserted
+    print(f"Planned inserts: {inserted}")
+    print(f"Planned duplicates skipped: {skipped}")
+    print(f"Estimated total rows after run: {total_after_estimate}")
+    if dry_run and planned_inserts:
+        print("Planned operations:")
+        for entity, key, category, source, permanent in planned_inserts:
+            print(
+                f"  + INSERT facts(entity={entity!r}, key={key!r}, category={category!r}, "
+                f"source={source!r}, permanent={permanent})"
+            )
+
+    if dry_run:
+        db.rollback()
+        print("Dry run complete. Rolled back all changes.")
+    else:
+        db.commit()
+        total = db.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+        print(f"✅ Seeded {inserted} facts ({skipped} duplicates skipped). Total: {total}")
     db.close()
 
 if __name__ == "__main__":
-    seed()
+    args = parse_args()
+    seed(dry_run=args.dry_run)
