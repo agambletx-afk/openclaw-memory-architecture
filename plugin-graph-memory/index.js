@@ -39,6 +39,7 @@ const DEFAULTS = {
     cacheSize: 10,            // LRU cache size for repeated queries
     cacheTTL: 60000,          // Cache TTL in ms (60 seconds)
     showEmptyResults: false,  // Set to true to show "[GRAPH MEMORY] No matching entities found"
+    telemetryPath: "/tmp/openclaw/memory-telemetry.jsonl",
     debug: false,             // Set true for redacted diagnostics
 };
 
@@ -80,8 +81,24 @@ class QueryCache {
 // Async telemetry writer (non-blocking)
 const telemetryQueue = [];
 let telemetryFlushPending = false;
+let telemetryPath = '/tmp/openclaw/memory-telemetry.jsonl';
+let telemetryDisabled = false;
+let telemetryWriteErrorLogged = false;
+
+function initTelemetry(config, logger) {
+    telemetryPath = config.telemetryPath || telemetryPath;
+    const telemetryDir = path.dirname(telemetryPath);
+    try {
+        fs.mkdirSync(telemetryDir, { recursive: true });
+    } catch (err) {
+        telemetryDisabled = true;
+        logger?.warn?.(`[graph-memory] telemetry disabled (mkdir failed): ${err.message}`);
+    }
+}
 
 function writeTelemetry(data) {
+    if (telemetryDisabled) return;
+
     telemetryQueue.push(JSON.stringify(data) + '\n');
     if (!telemetryFlushPending) {
         telemetryFlushPending = true;
@@ -89,8 +106,11 @@ function writeTelemetry(data) {
             const batch = telemetryQueue.splice(0, telemetryQueue.length);
             telemetryFlushPending = false;
             if (batch.length > 0) {
-                fs.appendFile('/tmp/openclaw/memory-telemetry.jsonl', batch.join(''), (err) => {
-                    if (err) console.error('[graph-memory] telemetry write error:', err.message);
+                fs.appendFile(telemetryPath, batch.join(''), (err) => {
+                    if (err && !telemetryWriteErrorLogged) {
+                        telemetryWriteErrorLogged = true;
+                        console.error('[graph-memory] telemetry write error:', err.message);
+                    }
                 });
             }
         });
@@ -245,6 +265,8 @@ module.exports = {
             api.logger?.info?.('graph-memory: disabled by config');
             return;
         }
+
+        initTelemetry(config, api.logger);
 
         // Resolve paths
         const workspaceDir = process.env.OPENCLAW_WORKSPACE
