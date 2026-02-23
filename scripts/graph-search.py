@@ -342,14 +342,11 @@ def main():
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--top-k", "-k", type=int, default=6)
     parser.add_argument("--debug", action="store_true", help="Show backend/database errors")
+    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
     args = parser.parse_args()
 
     global DEBUG
     DEBUG = args.debug
-    
-    db = sqlite3.connect(str(DB_PATH))
-    parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
-    args = parser.parse_args()
 
     db_path = resolve_db_path(args.db_path)
     set_db_path(db_path)

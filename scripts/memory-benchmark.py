@@ -26,7 +26,16 @@ from datetime import datetime
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-WORKSPACE = Path(os.environ.get("OPENCLAW_WORKSPACE", "/path/to/workspace"))
+WORKSPACE = None
+
+
+def resolve_workspace_path(cli_workspace: str | None = None) -> Path:
+    if cli_workspace:
+        return Path(cli_workspace).expanduser()
+    env_workspace = os.environ.get("OPENCLAW_WORKSPACE")
+    if env_workspace:
+        return Path(env_workspace).expanduser()
+    return Path.cwd()
 TOP_K_DEFAULT = 6  # Result passes if expected file appears in top K results
 
 # ─── Benchmark Queries ───────────────────────────────────────────────────────
@@ -125,6 +134,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", d
       - openclaw: openclaw memory search CLI (requires active session)
     """
     results = []
+    workspace = workspace or WORKSPACE or Path.cwd()
 
     if method in ("qmd", "vsearch"):
         search_cmd = "search" if method == "qmd" else "vsearch"
@@ -177,7 +187,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", d
                        "MEMORY.md", "TOOLS.md"]
         query_lower = query.lower()
         for fname in root_files:
-            fpath = WORKSPACE / fname
+            fpath = workspace / fname
             if fpath.exists():
                 try:
                     content = fpath.read_text(errors="ignore").lower()
@@ -201,7 +211,7 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", d
             result = subprocess.run(
                 ["openclaw", "memory", "search", "--json", "--max-results", str(top_k), query],
                 capture_output=True, text=True, timeout=30,
-                cwd=str(WORKSPACE)
+                cwd=str(workspace)
             )
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout.strip())
@@ -217,11 +227,11 @@ def search_memory(query: str, top_k: int = TOP_K_DEFAULT, method: str = "qmd", d
 
     elif method in ("graph", "hybrid"):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("graph_search", WORKSPACE / "scripts" / "graph-search.py")
+        spec = importlib.util.spec_from_file_location("graph_search", workspace / "scripts" / "graph-search.py")
         gs_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(gs_mod)
 
-        db = sqlite3.connect(str(WORKSPACE / "memory" / "facts.db"))
+        db = sqlite3.connect(str(workspace / "memory" / "facts.db"))
         graph_results = gs_mod.graph_search(query, db, top_k)
         db.close()
 
@@ -277,6 +287,9 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Show backend/parsing errors")
     args = parser.parse_args()
 
+    global WORKSPACE
+    WORKSPACE = resolve_workspace_path(args.workspace)
+
     categories = {}
     total_pass = 0
     total_fail = 0
@@ -293,6 +306,7 @@ def main():
             sys.exit(1)
 
     print(f"╔══════════════════════════════════════════════════════════════╗")
+    print(f"║  Workspace: {str(WORKSPACE):50.50s} ║")
     print(f"║  Memory Search Benchmark — {len(queries)} queries, top-{args.top_k}             ║")
     print(f"║  Method: {args.method:52s} ║")
     print(f"║  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}                                    ║")

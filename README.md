@@ -131,6 +131,17 @@ This architecture uses **each tool where it's strongest**.
 
 **Recommendation:** llama.cpp for speed and multilingual support. QMD for best quality when latency is acceptable.
 
+## Workspace Path Resolution Contract
+
+Scripts and plugins follow this path resolution order for workspace/database locations:
+
+1. Explicit CLI/config override (for example `--workspace`, `--db-path`, plugin `workspaceDir`).
+2. `OPENCLAW_WORKSPACE` environment variable.
+3. Current working directory.
+4. Legacy hardcoded fallback path (only for backward compatibility, with warning).
+
+This keeps behavior consistent across local development, CI, and containerized runs.
+
 ## Quick Start
 
 ### 1. Directory Structure

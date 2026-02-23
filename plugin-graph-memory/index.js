@@ -249,6 +249,13 @@ function getActivations(db, factIds) {
     }
 }
 
+function resolveWorkspaceDir(config) {
+    if (config.workspaceDir) return config.workspaceDir;
+    if (process.env.OPENCLAW_WORKSPACE) return process.env.OPENCLAW_WORKSPACE;
+    if (process.env.MOLTBOT_WORKSPACE) return process.env.MOLTBOT_WORKSPACE;
+    return process.cwd();
+}
+
 // ---------------------------------------------------------------------------
 // Plugin export
 // ---------------------------------------------------------------------------
@@ -269,9 +276,7 @@ module.exports = {
         initTelemetry(config, api.logger);
 
         // Resolve paths
-        const workspaceDir = process.env.OPENCLAW_WORKSPACE
-            || process.env.MOLTBOT_WORKSPACE
-            || path.join(process.env.HOME || '/home/coolmann', 'clawd');
+        const workspaceDir = resolveWorkspaceDir(config);
 
         const dbPath = config.dbPath || path.join(workspaceDir, 'memory', 'facts.db');
         const scriptPath = config.scriptPath || path.join(workspaceDir, 'scripts', 'graph-search.py');
